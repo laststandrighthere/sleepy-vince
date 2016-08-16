@@ -239,30 +239,8 @@ config CPU_FREQ_GOV_SCHED
 
 	  If in doubt, say N.
 
-<<<<<<< HEAD
-=======
-config CPU_FREQ_GOV_INTERACTIVE
-	tristate "'interactive' cpufreq policy governor"
-	depends on CPU_FREQ
-	select CPU_FREQ_GOV_ATTR_SET
-	select IRQ_WORK
-	help
-	  'interactive' - This driver adds a dynamic cpufreq policy governor
-	  designed for latency-sensitive workloads.
-
-	  This governor attempts to reduce the latency of clock
-	  increases so that the system is more responsive to
-	  interactive workloads.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called cpufreq_interactive.
-
-	  For details, take a look at linux/Documentation/cpu-freq.
-
-	  If in doubt, say N.
-
 config CPU_FREQ_GOV_SCHEDUTIL
-	tristate "'schedutil' cpufreq policy governor"
+	bool "'schedutil' cpufreq policy governor"
 	depends on CPU_FREQ
 	select CPU_FREQ_GOV_ATTR_SET
 	select IRQ_WORK
@@ -276,12 +254,8 @@ config CPU_FREQ_GOV_SCHEDUTIL
 	  frequency tipping point is at utilization/capacity equal to 80% in
 	  both cases.
 
-	  To compile this driver as a module, choose M here: the module will
-	  be called cpufreq_schedutil.
-
 	  If in doubt, say N.
 
->>>>>>> b1d0976148fb5... BACKPORT: cpufreq: schedutil: New governor based on scheduler utilization data
 comment "CPU frequency scaling drivers"
 
 config CPUFREQ_DT
