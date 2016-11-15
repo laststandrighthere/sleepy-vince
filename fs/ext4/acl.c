@@ -243,7 +243,7 @@ retry:
 	error = __ext4_set_acl(handle, inode, type, acl);
 	if (!error && update_mode) {
 		inode->i_mode = mode;
-		inode->i_ctime = ext4_current_time(inode);
+		inode->i_ctime = current_time(inode);
 		ext4_mark_inode_dirty(handle, inode);
 	}
 out_stop:
