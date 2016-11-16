@@ -2468,6 +2468,10 @@ static inline void calc_load_enter_idle(void) { }
 static inline void calc_load_exit_idle(void) { }
 #endif /* CONFIG_NO_HZ_COMMON */
 
+#ifndef cpu_relax_yield
+#define cpu_relax_yield() cpu_relax()
+#endif
+
 static inline void set_wake_up_idle(bool enabled)
 {
 	if (enabled)
