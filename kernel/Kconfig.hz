@@ -4,7 +4,8 @@
 
 choice
 	prompt "Timer frequency"
-	default HZ_250
+	default HZ_100_MUQSS if SCHED_MUQSS
+	default HZ_250 if !SCHED_MUQSS
 	help
 	 Allows the configuration of the timer frequency. It is customary
 	 to have the timer interrupt run at 1000 Hz but 100 Hz may be more
@@ -16,15 +17,30 @@ choice
 	 per second.
 
 
+	config HZ_100_MUQSS
+		bool "100 HZ" if SCHED_MUQSS
+	help
+	  100 Hz is a suitable choice in combination with MuQSS which does
+	  not rely on ticks for rescheduling interrupts, and is not Hz limited
+	  for timeouts and sleeps from both the kernel and userspace.
+	  This allows us to benefit from the lower overhead and higher
+	  throughput of fewer timer ticks.
+
 	config HZ_100
-		bool "100 HZ"
+		bool "100 HZ" if !SCHED_MUQSS
 	help
 	  100 Hz is a typical choice for servers, SMP and NUMA systems
 	  with lots of processors that may show reduced performance if
 	  too many timer interrupts are occurring.
 
+	config HZ_250_MUQSS
+		bool "250 HZ" if SCHED_MUQSS
+	help
+	 250 Hz is the default choice for the mainline scheduler but not
+	 advantageous in combination with MuQSS.
+
 	config HZ_250
-		bool "250 HZ"
+		bool "250 HZ" if !SCHED_MUQSS
 	help
 	 250 Hz is a good compromise choice allowing server performance
 	 while also showing good interactive responsiveness even
@@ -49,7 +65,9 @@ endchoice
 
 config HZ
 	int
+	default 100 if HZ_100_MUQSS
 	default 100 if HZ_100
+	default 250 if HZ_250_MUQSS
 	default 250 if HZ_250
 	default 300 if HZ_300
 	default 1000 if HZ_1000
