@@ -2254,6 +2254,7 @@ prio_changed_rt(struct rq *rq, struct task_struct *p, int oldprio)
 	}
 }
 
+#ifdef CONFIG_POSIX_TIMERS
 static void watchdog(struct rq *rq, struct task_struct *p)
 {
 	unsigned long soft, hard;
@@ -2275,6 +2276,9 @@ static void watchdog(struct rq *rq, struct task_struct *p)
 			p->cputime_expires.sched_exp = p->se.sum_exec_runtime;
 	}
 }
+#else
+static inline void watchdog(struct rq *rq, struct task_struct *p) { }
+#endif
 
 static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 {
