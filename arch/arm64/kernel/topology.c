@@ -19,6 +19,7 @@
 #include <linux/nodemask.h>
 #include <linux/of.h>
 #include <linux/sched.h>
+#include <linux/sched/topology.h>
 
 #include <asm/cputype.h>
 #include <asm/topology.h>
