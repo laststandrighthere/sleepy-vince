@@ -3,6 +3,8 @@
 
 #include <linux/topology.h>
 
+#include <linux/sched/idle.h>
+
 /*
  * sched-domains (multiprocessor balancing) declarations:
  */
@@ -220,5 +222,7 @@ static inline int task_node(const struct task_struct *p)
 {
 	return cpu_to_node(task_cpu(p));
 }
+
+#include <linux/sched/idle.h>
 
 #endif /* _LINUX_SCHED_TOPOLOGY_H */
