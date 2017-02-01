@@ -3,7 +3,7 @@
 #include <linux/sched/sysctl.h>
 #include <linux/sched/topology.h>
 #include <linux/sched/rt.h>
-#include <linux/sched/smt.h>
+#include <linux/sched/clock.h>
 #include <linux/sched/wake_q.h>
 #include <linux/u64_stats_sync.h>
 #include <linux/sched/deadline.h>
@@ -15,6 +15,7 @@
 #include <linux/irq_work.h>
 #include <linux/tick.h>
 #include <linux/slab.h>
+#include <linux/sched/smt.h>
 
 #include "cpupri.h"
 #include "cpudeadline.h"
