@@ -4,7 +4,7 @@
 #include <uapi/linux/sched.h>
 
 #include <linux/sched/prio.h>
-
+#include <linux/nodemask.h>
 
 struct sched_param {
 	int sched_priority;
@@ -39,7 +39,6 @@ struct sched_param {
 #include <linux/completion.h>
 #include <linux/pid.h>
 #include <linux/percpu.h>
-#include <linux/topology.h>
 #include <linux/seccomp.h>
 #include <linux/rcupdate.h>
 #include <linux/rculist.h>
@@ -3317,11 +3316,6 @@ static inline unsigned int task_cpu(const struct task_struct *p)
 #else
 	return task_thread_info(p)->cpu;
 #endif
-}
-
-static inline int task_node(const struct task_struct *p)
-{
-	return cpu_to_node(task_cpu(p));
 }
 
 extern void set_task_cpu(struct task_struct *p, unsigned int cpu);
