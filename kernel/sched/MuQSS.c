@@ -865,8 +865,8 @@ static inline bool rq_local(struct rq *rq);
  */
 static void update_load_avg(struct rq *rq, unsigned int flags)
 {
-	unsigned long us_interval;
-	long load, curload;
+	unsigned long us_interval, curload;
+	long load;
 
 	if (unlikely(rq->niffies <= rq->load_update))
 		return;
@@ -877,9 +877,6 @@ static void update_load_avg(struct rq *rq, unsigned int flags)
 	if (unlikely(load < 0))
 		load = 0;
 	load += curload * curload * SCHED_CAPACITY_SCALE * us_interval * 5 / 262144;
-	/* If this CPU has all the load, make it ramp up quickly */
-	if (curload > load && curload >= atomic_read(&grq.nr_running))
-		load = curload;
 	rq->load_avg = load;
 
 	rq->load_update = rq->niffies;
