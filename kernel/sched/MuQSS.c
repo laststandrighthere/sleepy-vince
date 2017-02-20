@@ -3319,8 +3319,8 @@ void scheduler_tick(void)
 	update_cpu_clock_tick(rq, rq->curr);
 	if (!rq_idle(rq))
 		task_running_tick(rq);
-	else
-		no_iso_tick(rq, rq->last_scheduler_tick - rq->last_jiffy);
+	else if (rq->last_jiffy > rq->last_scheduler_tick)
+		no_iso_tick(rq, rq->last_jiffy - rq->last_scheduler_tick);
 	rq->last_scheduler_tick = rq->last_jiffy;
 	rq->last_tick = rq->clock;
 	perf_event_task_tick();
