@@ -4247,8 +4247,10 @@ int task_prio(const struct task_struct *p)
 
 	/* Convert to ms to avoid overflows */
 	delta = NS_TO_MS(p->deadline - task_rq(p)->niffies);
+	if (unlikely(delta < 0))
+		delta = 0;
 	delta = delta * 40 / ms_longest_deadline_diff();
-	if (delta > 0 && delta <= 80)
+	if (delta <= 80)
 		prio += delta;
 	if (idleprio_task(p))
 		prio += 40;
