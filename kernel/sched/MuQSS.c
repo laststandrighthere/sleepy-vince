@@ -1922,7 +1922,7 @@ static int valid_task_cpu(struct task_struct *p)
 
 	if (unlikely(!cpumask_weight(&valid_mask))) {
 		/* Hotplug boot threads do this before the CPU is up */
-		WARN_ON(sched_smp_initialized);
+		printk(KERN_INFO "SCHED: No cpumask for %s/%d\n", p->comm, p->pid);
 		return cpumask_any(tsk_cpus_allowed(p));
 	}
 	return cpumask_any(&valid_mask);
