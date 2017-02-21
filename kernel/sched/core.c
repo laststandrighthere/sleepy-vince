@@ -1684,7 +1684,7 @@ static void
 ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 		 struct rq_flags *rf)
 {
-	int en_flags = ENQUEUE_WAKEUP;
+	int en_flags = ENQUEUE_WAKEUP | ENQUEUE_NOCLOCK;
 
 	lockdep_assert_held(&rq->lock);
 
@@ -1736,6 +1736,7 @@ void sched_ttwu_pending(void)
 		return;
 
 	rq_lock_irqsave(rq, &rf);
+	update_rq_clock(rq);
 
 	while (llist) {
 		int wake_flags = 0;
@@ -1848,6 +1849,7 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
 #endif
 
 	rq_lock(rq, &rf);
+	update_rq_clock(rq);
 	ttwu_do_activate(rq, p, wake_flags, &rf);
 	rq_unlock(rq, &rf);
 }
