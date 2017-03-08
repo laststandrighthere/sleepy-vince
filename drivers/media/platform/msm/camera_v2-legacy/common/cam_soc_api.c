@@ -375,13 +375,12 @@ int msm_camera_clk_enable(struct device *dev,
 				if (clk_rate == 0) {
 					clk_rate =
 						  clk_round_rate(clk_ptr[i], 0);
-					if (clk_rate < 0) {
+					if (clk_rate <= 0) {
 						pr_err("%s round rate failed\n",
 							  clk_info[i].clk_name);
 						goto cam_clk_set_err;
 					}
-					rc = clk_set_rate(clk_ptr[i],
-								clk_rate);
+					rc = clk_set_rate(clk_ptr[i], clk_rate);
 					if (rc < 0) {
 						pr_err("%s set rate failed\n",
 							  clk_info[i].clk_name);
