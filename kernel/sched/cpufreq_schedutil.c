@@ -211,6 +211,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 				policy->cpuinfo.max_freq : policy->cur;
 
 	freq = (freq + (freq >> 2)) * util / max;
+	trace_sugov_next_freq(policy->cpu, util, max, freq);
 
 	if (freq == sg_policy->cached_raw_freq && sg_policy->next_freq != UINT_MAX)
 		return sg_policy->next_freq;
@@ -407,6 +408,10 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 		sg_cpu->max = max;
 		sg_cpu->flags = flags;
 
+		trace_sugov_util_update(sg_cpu->cpu, sg_cpu->util,
+				sg_policy->avg_cap, max, sg_cpu->walt_load.nl,
+				sg_cpu->walt_load.pl, flags);
+
 		sugov_iowait_boost(sg_cpu, &util, &max);
 		sugov_calc_avg_cap(sg_policy, sg_cpu->walt_load.ws,
 				   sg_policy->policy->cur);
@@ -510,6 +515,10 @@ static void sugov_update_shared(struct update_util_data *hook, u64 time,
 
 	sugov_calc_avg_cap(sg_policy, sg_cpu->walt_load.ws,
 			   sg_policy->policy->cur);
+
+	trace_sugov_util_update(sg_cpu->cpu, sg_cpu->util, sg_policy->avg_cap,
+				max, sg_cpu->walt_load.nl,
+				sg_cpu->walt_load.pl, flags);
 
 	if (sugov_should_update_freq(sg_policy, time)) {
 		if (flags & SCHED_CPUFREQ_RT_DL)

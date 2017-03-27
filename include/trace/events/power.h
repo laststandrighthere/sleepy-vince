@@ -851,7 +851,6 @@ TRACE_EVENT(sugov_next_freq,
 		      __entry->freq)
 );
 
-
 #endif /* _TRACE_POWER_H */
 
 /* This part must be outside protection */
