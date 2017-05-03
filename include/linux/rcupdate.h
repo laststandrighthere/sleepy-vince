@@ -123,12 +123,8 @@ static inline void rcu_end_inkernel_boot(void) { }
 void rcu_sysrq_start(void);
 void rcu_sysrq_end(void);
 #else /* #ifdef CONFIG_RCU_STALL_COMMON */
-static inline void rcu_sysrq_start(void)
-{
-}
-static inline void rcu_sysrq_end(void)
-{
-}
+static inline void rcu_sysrq_start(void) { }
+static inline void rcu_sysrq_end(void) { }
 #endif /* #else #ifdef CONFIG_RCU_STALL_COMMON */
 
 #ifdef CONFIG_NO_HZ_FULL
@@ -142,9 +138,7 @@ static inline void rcu_user_exit(void) { }
 #ifdef CONFIG_RCU_NOCB_CPU
 void rcu_init_nohz(void);
 #else /* #ifdef CONFIG_RCU_NOCB_CPU */
-static inline void rcu_init_nohz(void)
-{
-}
+static inline void rcu_init_nohz(void) { }
 #endif /* #else #ifdef CONFIG_RCU_NOCB_CPU */
 
 /**
@@ -234,21 +228,10 @@ void destroy_rcu_head(struct rcu_head *head);
 void init_rcu_head_on_stack(struct rcu_head *head);
 void destroy_rcu_head_on_stack(struct rcu_head *head);
 #else /* !CONFIG_DEBUG_OBJECTS_RCU_HEAD */
-static inline void init_rcu_head(struct rcu_head *head)
-{
-}
-
-static inline void destroy_rcu_head(struct rcu_head *head)
-{
-}
-
-static inline void init_rcu_head_on_stack(struct rcu_head *head)
-{
-}
-
-static inline void destroy_rcu_head_on_stack(struct rcu_head *head)
-{
-}
+static inline void init_rcu_head(struct rcu_head *head) { }
+static inline void destroy_rcu_head(struct rcu_head *head) { }
+static inline void init_rcu_head_on_stack(struct rcu_head *head) { }
+static inline void destroy_rcu_head_on_stack(struct rcu_head *head) { }
 #endif	/* #else !CONFIG_DEBUG_OBJECTS_RCU_HEAD */
 
 #if defined(CONFIG_HOTPLUG_CPU) && defined(CONFIG_PROVE_RCU)
@@ -325,9 +308,7 @@ static inline void rcu_preempt_sleep_check(void)
 			 "Illegal context switch in RCU read-side critical section");
 }
 #else /* #ifdef CONFIG_PROVE_RCU */
-static inline void rcu_preempt_sleep_check(void)
-{
-}
+static inline void rcu_preempt_sleep_check(void) { }
 #endif /* #else #ifdef CONFIG_PROVE_RCU */
 
 #define rcu_sleep_check()						\
@@ -897,9 +878,7 @@ static inline bool rcu_sys_is_idle(void)
 	return false;
 }
 
-static inline void rcu_sysidle_force_exit(void)
-{
-}
+static inline void rcu_sysidle_force_exit(void) { }
 
 #endif /* #else #ifdef CONFIG_NO_HZ_FULL_SYSIDLE */
 
