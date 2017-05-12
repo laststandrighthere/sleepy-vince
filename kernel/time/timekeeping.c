@@ -517,6 +517,7 @@ static void halt_fast_timekeeper(struct timekeeper *tk)
 }
 
 #ifdef CONFIG_GENERIC_TIME_VSYSCALL_OLD
+#warning Please contact your maintainers, as GENERIC_TIME_VSYSCALL_OLD compatibity will disappear soon.
 
 static inline void update_vsyscall(struct timekeeper *tk)
 {
