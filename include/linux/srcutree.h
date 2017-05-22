@@ -139,5 +139,6 @@ struct srcu_struct {
 
 void synchronize_srcu_expedited(struct srcu_struct *sp);
 void srcu_barrier(struct srcu_struct *sp);
+void srcu_torture_stats_print(struct srcu_struct *sp, char *tt, char *tf);
 
 #endif
