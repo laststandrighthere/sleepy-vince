@@ -1756,18 +1756,20 @@ static void cpuhp_rollback_install(int failedcpu, enum cpuhp_state state,
 	}
 }
 
-int __cpuhp_state_add_instance(enum cpuhp_state state, struct hlist_node *node,
-			       bool invoke)
+int __cpuhp_state_add_instance_cpuslocked(enum cpuhp_state state,
+					  struct hlist_node *node,
+					  bool invoke)
 {
 	struct cpuhp_step *sp;
 	int cpu;
 	int ret;
 
+	lockdep_assert_cpus_held();
+
 	sp = cpuhp_get_step(state);
 	if (sp->multi_instance == false)
 		return -EINVAL;
 
-	cpus_read_lock();
 	mutex_lock(&cpuhp_state_mutex);
 
 	if (!invoke || !sp->startup.multi)
@@ -1797,6 +1799,16 @@ add_node:
 
 err:
 	mutex_unlock(&cpuhp_state_mutex);
+	return ret;
+}
+
+int __cpuhp_state_add_instance(enum cpuhp_state state, struct hlist_node *node,
+			       bool invoke)
+{
+	int ret;
+
+	cpus_read_lock();
+	ret = __cpuhp_state_add_instance_cpuslocked(state, node, invoke);
 	cpus_read_unlock();
 	return ret;
 }
