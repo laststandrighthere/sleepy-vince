@@ -69,6 +69,7 @@ CONFIG_RCU_TORTURE_TEST_RUNNABLE
 CONFIG_PREEMPT_RCU
 CONFIG_TREE_RCU
 CONFIG_TINY_RCU
+CONFIG_TASKS_RCU
 
 	These are controlled by CONFIG_PREEMPT and/or CONFIG_SMP.
 
@@ -77,7 +78,6 @@ CONFIG_SPARSE_RCU_POINTER
 	Makes sense only for sparse runs, not for kernel builds.
 
 CONFIG_SRCU
-CONFIG_TASKS_RCU
 
 	Selected by CONFIG_RCU_TORTURE_TEST, so cannot disable.
 
