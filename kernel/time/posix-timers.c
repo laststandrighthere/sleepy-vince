@@ -277,7 +277,6 @@ static __init int init_posix_timers(void)
 					NULL);
 	return 0;
 }
-
 __initcall(init_posix_timers);
 
 /*
@@ -291,7 +290,7 @@ static inline int timer_overrun_to_int(struct k_itimer *timr, int baseval)
 	return sum > (s64)INT_MAX ? INT_MAX : (int)sum;
 }
 
-static void schedule_next_timer(struct k_itimer *timr)
+static void common_hrtimer_rearm(struct k_itimer *timr)
 {
 	struct hrtimer *timer = &timr->it.real.timer;
 
@@ -324,10 +323,7 @@ void posixtimer_rearm(struct siginfo *info)
 		return;
 
 	if (timr->it_requeue_pending == info->si_sys_private) {
-		if (timr->it_clock < 0)
-			posix_cpu_timer_schedule(timr);
-		else
-			schedule_next_timer(timr);
+		timr->kclock->timer_rearm(timr);
 
 		timr->it_overrun_last = timr->it_overrun;
 		timr->it_overrun = -1;
@@ -1054,6 +1050,7 @@ static const struct k_clock clock_realtime = {
 	.timer_set	= common_timer_set,
 	.timer_get	= common_timer_get,
 	.timer_del	= common_timer_del,
+	.timer_rearm	= common_hrtimer_rearm,
 };
 
 static const struct k_clock clock_monotonic = {
@@ -1065,6 +1062,7 @@ static const struct k_clock clock_monotonic = {
 	.timer_set	= common_timer_set,
 	.timer_get	= common_timer_get,
 	.timer_del	= common_timer_del,
+	.timer_rearm	= common_hrtimer_rearm,
 };
 
 static const struct k_clock clock_monotonic_raw = {
@@ -1091,6 +1089,7 @@ static const struct k_clock clock_tai = {
 	.timer_set	= common_timer_set,
 	.timer_get	= common_timer_get,
 	.timer_del	= common_timer_del,
+	.timer_rearm	= common_hrtimer_rearm,
 };
 
 static const struct k_clock clock_boottime = {
@@ -1102,6 +1101,7 @@ static const struct k_clock clock_boottime = {
 	.timer_set	= common_timer_set,
 	.timer_get	= common_timer_get,
 	.timer_del	= common_timer_del,
+	.timer_rearm	= common_hrtimer_rearm,
 };
 
 static const struct k_clock * const posix_clocks[] = {
