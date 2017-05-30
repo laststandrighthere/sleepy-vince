@@ -57,6 +57,7 @@ struct k_itimer {
 	const struct k_clock *kclock;
 	clockid_t it_clock;		/* which timer type */
 	timer_t it_id;			/* timer id */
+	int it_active;
 	s64 it_overrun;			/* overrun on pending signal  */
 	s64 it_overrun_last;		/* overrun on last delivered signal */
 	int it_requeue_pending;		/* waiting to requeue this timer */
