@@ -61,6 +61,7 @@ struct k_itimer {
 	int it_requeue_pending;		/* waiting to requeue this timer */
 #define REQUEUE_PENDING 1
 	int it_sigev_notify;		/* notify word of sigevent struct */
+	ktime_t it_interval;
 	struct signal_struct *it_signal;
 	union {
 		struct pid *it_pid;	/* pid of process to send signal to */
@@ -70,7 +71,6 @@ struct k_itimer {
 	union {
 		struct {
 			struct hrtimer timer;
-			ktime_t interval;
 		} real;
 		struct cpu_timer_list cpu;
 		struct {
@@ -81,7 +81,6 @@ struct k_itimer {
 		} mmtimer;
 		struct {
 			struct alarm alarmtimer;
-			ktime_t interval;
 		} alarm;
 		struct rcu_head rcu;
 	} it;

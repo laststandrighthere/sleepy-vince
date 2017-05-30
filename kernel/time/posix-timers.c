@@ -295,12 +295,11 @@ static void schedule_next_timer(struct k_itimer *timr)
 {
 	struct hrtimer *timer = &timr->it.real.timer;
 
-	if (timr->it.real.interval == 0)
+	if (!timr->it_interval)
 		return;
 
 	timr->it_overrun += hrtimer_forward(timer, timer->base->get_time(),
-					    timr->it.real.interval);
-
+					    timr->it_interval);
 	hrtimer_restart(timer);
 }
 
@@ -385,7 +384,7 @@ static enum hrtimer_restart posix_timer_fn(struct hrtimer *timer)
 	timr = container_of(timer, struct k_itimer, it.real.timer);
 	spin_lock_irqsave(&timr->it_lock, flags);
 
-	if (timr->it.real.interval != 0)
+	if (timr->it_interval != 0)
 		si_private = ++timr->it_requeue_pending;
 
 	if (posix_timer_event(timr, si_private)) {
@@ -394,7 +393,7 @@ static enum hrtimer_restart posix_timer_fn(struct hrtimer *timer)
 		 * we will not get a call back to restart it AND
 		 * it should be restarted.
 		 */
-		if (timr->it.real.interval != 0) {
+		if (timr->it_interval != 0) {
 			ktime_t now = hrtimer_cb_get_time(timer);
 
 			/*
@@ -423,12 +422,12 @@ static enum hrtimer_restart posix_timer_fn(struct hrtimer *timer)
 			{
 				ktime_t kj = NSEC_PER_SEC / HZ;
 
-				if (timr->it.real.interval < kj)
+				if (timr->it_interval < kj)
 					now = ktime_add(now, kj);
 			}
 #endif
 			timr->it_overrun += hrtimer_forward(timer, now,
-						timr->it.real.interval);
+						timr->it_interval);
 			ret = HRTIMER_RESTART;
 			++timr->it_requeue_pending;
 		}
@@ -640,7 +639,7 @@ common_timer_get(struct k_itimer *timr, struct itimerspec64 *cur_setting)
 
 	memset(cur_setting, 0, sizeof(*cur_setting));
 
-	iv = timr->it.real.interval;
+	iv = timr->it_interval;
 
 	/* interval timer ? */
 	if (iv)
@@ -741,7 +740,7 @@ common_timer_set(struct k_itimer *timr, int flags,
 		common_timer_get(timr, old_setting);
 
 	/* disable the timer */
-	timr->it.real.interval = 0;
+	timr->it_interval = 0;
 	/*
 	 * careful here.  If smp we could be in the "fire" routine which will
 	 * be spinning as we hold the lock.  But this is ONLY an SMP issue.
@@ -764,7 +763,7 @@ common_timer_set(struct k_itimer *timr, int flags,
 	hrtimer_set_expires(timer, timespec64_to_ktime(new_setting->it_value));
 
 	/* Convert interval */
-	timr->it.real.interval = timespec64_to_ktime(new_setting->it_interval);
+	timr->it_interval = timespec64_to_ktime(new_setting->it_interval);
 
 	/* SIGEV_NONE timers are not queued ! See common_timer_get */
 	if (((timr->it_sigev_notify & ~SIGEV_THREAD_ID) == SIGEV_NONE)) {
@@ -829,7 +828,7 @@ retry:
 
 static int common_timer_del(struct k_itimer *timer)
 {
-	timer->it.real.interval = 0;
+	timer->it_interval = 0;
 
 	if (hrtimer_try_to_cancel(&timer->it.real.timer) < 0)
 		return TIMER_RETRY;
