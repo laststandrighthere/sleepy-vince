@@ -75,8 +75,6 @@ do {									\
 	___p1;								\
 })
 
-#define smp_mb__before_spinlock()   smp_mb()
-
 #ifdef CONFIG_PPC_BOOK3S_64
 #define NOSPEC_BARRIER_SLOT   nop
 #elif defined(CONFIG_PPC_FSL_BOOK3E)
