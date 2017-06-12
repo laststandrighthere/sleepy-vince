@@ -24,6 +24,7 @@
 #include <linux/pm_qos.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_runtime.h>
+#include <linux/suspend.h>
 
 #include "internal.h"
 
@@ -385,6 +386,12 @@ EXPORT_SYMBOL(acpi_bus_power_manageable);
 #ifdef CONFIG_PM
 static DEFINE_MUTEX(acpi_pm_notifier_lock);
 
+void acpi_pm_wakeup_event(struct device *dev)
+{
+	pm_wakeup_dev_event(dev, 0, acpi_s2idle_wakeup());
+}
+EXPORT_SYMBOL_GPL(acpi_pm_wakeup_event);
+
 static void acpi_pm_notify_handler(acpi_handle handle, u32 val, void *not_used)
 {
 	struct acpi_device *adev;
@@ -398,8 +405,8 @@ static void acpi_pm_notify_handler(acpi_handle handle, u32 val, void *not_used)
 
 	mutex_lock(&acpi_pm_notifier_lock);
 
-	if (adev->wakeup.flags.notifier_present) {
-		__pm_wakeup_event(adev->wakeup.ws, 0);
+	if (adev->wakeup.flags.notifier_present) { <<<<<<< HEAD
+		pm_wakeup_ws_event(adev->wakeup.ws, 0, acpi_s2idle_wakeup());
 		if (adev->wakeup.context.work.func)
 			queue_pm_work(&adev->wakeup.context.work);
 	}
