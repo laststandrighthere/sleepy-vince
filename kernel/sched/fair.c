@@ -180,6 +180,9 @@ unsigned int sysctl_sched_cfs_bandwidth_slice		= 5000UL;
  */
 unsigned int capacity_margin				= 1280;
 
+unsigned int sysctl_sched_capacity_margin_up = 1078; /* ~5% margin */
+unsigned int sysctl_sched_capacity_margin_down = 1205; /* ~15% margin */
+
 static inline void update_load_add(struct load_weight *lw, unsigned long inc)
 {
 	lw->weight += inc;
@@ -3676,7 +3679,8 @@ static inline unsigned long cfs_rq_load_avg(struct cfs_rq *cfs_rq)
 
 static int idle_balance(struct rq *this_rq, struct rq_flags *rf);
 
-static inline int task_fits_capacity(struct task_struct *p, long capacity);
+static inline int task_fits_capacity(struct task_struct *p, long capacity,
+								int cpu);
 
 static inline void update_misfit_status(struct task_struct *p, struct rq *rq)
 {
@@ -3688,7 +3692,7 @@ static inline void update_misfit_status(struct task_struct *p, struct rq *rq)
 		return;
 	}
 
-	if (task_fits_capacity(p, capacity_of(cpu_of(rq)))) {
+	if (task_fits_capacity(p, capacity_of(cpu_of(rq)),cpu_of(rq))) {
 		rq->misfit_task_load = 0;
 		return;
 	}
@@ -7257,9 +7261,18 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	return select_idle_sibling_cstate_aware(p, prev, target);
 }
 
-static inline int task_fits_capacity(struct task_struct *p, long capacity)
+static inline int task_fits_capacity(struct task_struct *p,
+					long capacity,
+					int cpu)
 {
-	return capacity * 1024 > boosted_task_util(p) * capacity_margin;
+	unsigned int margin;
+
+	if (capacity_orig_of(task_cpu(p)) > capacity_orig_of(cpu))
+		margin = sysctl_sched_capacity_margin_down;
+	else
+		margin = sysctl_sched_capacity_margin_up;
+
+	return capacity * 1024 > boosted_task_util(p) * margin;
 }
 
 static int start_cpu(bool boosted)
@@ -7626,7 +7639,7 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 	/* Bring task utilization in sync with prev_cpu */
 	sync_entity_load_avg(&p->se);
 
-	return !task_fits_capacity(p, min_cap);
+	return !task_fits_capacity(p, min_cap, cpu);
 }
 
 static bool cpu_overutilized(int cpu)
