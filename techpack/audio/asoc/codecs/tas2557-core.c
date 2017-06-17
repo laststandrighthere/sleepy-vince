@@ -1031,8 +1031,11 @@ static int fw_parse(struct tas2557_priv *pTAS2557,
 	nSize -= nPosition;
 	nPosition = 0;
 
-	if (nSize > 64)
+	if (nSize > 64) {
 		nPosition = fw_parse_calibration_data(pTAS2557, pFirmware, pData);
+		if (nPosition < 0)
+			return nPosition;
+	}
 	return 0;
 }
 
