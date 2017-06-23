@@ -50,8 +50,7 @@ static ssize_t cpu_capacity_show(struct device *dev,
 {
 	struct cpu *cpu = container_of(dev, struct cpu, dev);
 
-	return sprintf(buf, "%lu\n",
-			topology_get_cpu_scale(NULL, cpu->dev.id));
+	return sprintf(buf, "%lu\n", topology_get_cpu_scale(NULL, cpu->dev.id));
 }
 
 static ssize_t cpu_capacity_store(struct device *dev,
@@ -137,8 +136,7 @@ bool __init topology_parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 	if (cap_parsing_failed)
 		return false;
 
-	ret = of_property_read_u32(cpu_node,
-				   "capacity-dmips-mhz",
+	ret = of_property_read_u32(cpu_node, "capacity-dmips-mhz",
 				   &cpu_capacity);
 	if (!ret) {
 		if (!raw_capacity) {
@@ -190,8 +188,7 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 		pr_debug("cpu_capacity: init cpu capacity for CPUs [%*pbl] (to_visit=%*pbl)\n",
 				cpumask_pr_args(policy->related_cpus),
 				cpumask_pr_args(cpus_to_visit));
-		cpumask_andnot(cpus_to_visit,
-			       cpus_to_visit,
+		cpumask_andnot(cpus_to_visit, cpus_to_visit,
 			       policy->related_cpus);
 		for_each_cpu(cpu, policy->related_cpus) {
 			raw_capacity[cpu] = topology_get_cpu_scale(NULL, cpu) *
