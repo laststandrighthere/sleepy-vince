@@ -29,11 +29,6 @@
 
 #define arch_spin_is_locked(x)		(*(volatile int *)(&(x)->slock) <= 0)
 
-static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
-{
-	smp_cond_load_acquire(&lock->slock, VAL > 0);
-}
-
 /**
  * arch_spin_trylock - Try spin lock and return a result
  * @lock: Pointer to the lock variable

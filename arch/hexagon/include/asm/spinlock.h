@@ -167,11 +167,6 @@ static inline unsigned int arch_spin_trylock(arch_spinlock_t *lock)
 /*
  * SMP spinlocks are intended to allow only a single CPU at the lock
  */
-static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
-{
-	smp_cond_load_acquire(&lock->lock, !VAL);
-}
-
 #define arch_spin_is_locked(x) ((x)->lock != 0)
 
 #endif

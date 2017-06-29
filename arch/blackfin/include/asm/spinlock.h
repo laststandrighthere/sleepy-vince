@@ -46,11 +46,6 @@ static inline void arch_spin_unlock(arch_spinlock_t *lock)
 	__raw_spin_unlock_asm(&lock->lock);
 }
 
-static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
-{
-	smp_cond_load_acquire(&lock->lock, !VAL);
-}
-
 static inline void arch_read_lock(arch_rwlock_t *rw)
 {
 	__raw_read_lock_asm(&rw->lock);
