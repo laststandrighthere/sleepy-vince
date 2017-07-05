@@ -54,9 +54,9 @@ static ktime_t freezer_delta;
 static DEFINE_SPINLOCK(freezer_delta_lock);
 #endif
 
+#ifdef CONFIG_RTC_CLASS
 static struct wakeup_source *ws;
 
-#ifdef CONFIG_RTC_CLASS
 /* rtc timer and device for setting alarm wakeups at suspend */
 static struct rtc_timer		rtctimer;
 static struct rtc_device	*rtcdev;
@@ -100,10 +100,14 @@ static int alarmtimer_rtc_add_device(struct device *dev,
 	unsigned long flags;
 	int err = 0;
 	struct rtc_device *rtc = to_rtc_device(dev);
+	struct wakeup_source *__ws;
+
 	if (rtcdev)
 		return -EBUSY;
 	if (!rtc->ops->set_alarm)
 		return -1;
+
+	__ws = wakeup_source_register("alarmtimer");
 
 	spin_lock_irqsave(&rtcdev_lock, flags);
 	if (!rtcdev) {
@@ -113,12 +117,16 @@ static int alarmtimer_rtc_add_device(struct device *dev,
 		rtcdev = rtc;
 		/* hold a reference so it doesn't go away */
 		get_device(dev);
+		ws = __ws;
+		__ws = NULL;
 	}
 
 rtc_irq_reg_err:
 	spin_unlock_irqrestore(&rtcdev_lock, flags);
-	return err;
 
+	wakeup_source_unregister(__ws);
+
+	return err;
 }
 
 static void alarmtimer_rtc_remove_device(struct device *dev,
@@ -888,7 +896,6 @@ static int __init alarmtimer_init(void)
 		error = PTR_ERR(pdev);
 		goto out_drv;
 	}
-	ws = wakeup_source_register("alarmtimer");
 	return 0;
 
 out_drv:
