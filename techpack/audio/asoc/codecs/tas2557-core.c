@@ -44,6 +44,7 @@
 
 #define	PPC_DRIVER_CRCCHK			0x00000200
 #define	PPC_DRIVER_CONFDEV			0x00000300
+#define	PPC_DRIVER_MTPLLSRC			0x00000400
 #define	PPC_DRIVER_CFGDEV_NONCRC	0x00000101
 
 #define TAS2557_CAL_NAME    "/persist/spkr_calibration.bin"
@@ -849,6 +850,14 @@ static int fw_parse_configuration_data(struct tas2557_priv *pTAS2557,
 
 		pConfiguration->mnSamplingRate = fw_convert_number(pData);
 		pData += 4;
+
+		if (pFirmware->mnDriverVersion >= PPC_DRIVER_MTPLLSRC) {
+			pConfiguration->mnPLLSrc = pData[0];
+			pData++;
+
+			pConfiguration->mnPLLSrcRate = fw_convert_number(pData);
+			pData += 4;
+		}
 
 		n = fw_parse_data(pTAS2557, pFirmware, &(pConfiguration->mData), pData);
 		pData += n;
