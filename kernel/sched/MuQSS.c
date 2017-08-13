@@ -441,18 +441,29 @@ static inline void double_rq_unlock(struct rq *rq1, struct rq *rq2)
 		__release(rq2->lock);
 }
 
-/* Must be sure rq1 != rq2 and irqs are disabled */
-static inline void lock_second_rq(struct rq *rq1, struct rq *rq2)
-	__releases(rq1->lock)
-	__acquires(rq1->lock)
-	__acquires(rq2->lock)
+/* Grab two rq locks for migration, holding the pi_lock of p and return the
+ * task rq of p */
+static inline struct rq *task_rq_double_lock(struct task_struct *p, struct rq *dest_rq)
+	__acquires(p->pi_lock)
+	__acquires(rq->lock)
+	__acquires(dest_rq->lock)
 {
-	BUG_ON(!irqs_disabled());
-	if (unlikely(!raw_spin_trylock(&rq2->lock))) {
-		raw_spin_unlock(&rq1->lock);
-		__double_rq_lock(rq1, rq2);
+	unsigned long flags;
+	struct rq *rq;
+
+	local_irq_save(flags);
+	while (42) {
+		raw_spin_lock(&p->pi_lock);
+		rq = task_rq(p);
+		__double_rq_lock(rq, dest_rq);
+		if (likely(rq == task_rq(p)))
+			break;
+		double_rq_unlock(rq, dest_rq);
+		raw_spin_unlock(&p->pi_lock);
 	}
-	synchronise_niffies(rq1, rq2);
+	local_irq_restore(flags);
+
+	return rq;
 }
 
 static inline void lock_all_rqs(void)
@@ -5779,15 +5790,20 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 		} else
 			resched_task(p);
 	} else {
-		int dest_cpu = cpumask_any_and(cpu_valid_mask, new_mask);
-		struct rq *dest_rq = cpu_rq(dest_cpu);
+		int cpu = cpumask_any_and(cpu_valid_mask, new_mask);
+		struct rq *dest_rq = cpu_rq(cpu);
 
-		/* Switch rq locks here */
-		lock_second_rq(rq, dest_rq);
-		set_task_cpu(p, dest_cpu);
+		/* Grab both rq locks, set task cpu, then switch to dest lock */
 		rq_unlock(rq);
-
-		rq = dest_rq;
+		/* rq is currently protect p */
+		rq = task_rq_double_lock(p, dest_rq);
+		set_task_cpu(p, cpu);
+		/* dest_rq is now protecting p */
+		if (likely(rq != dest_rq)) {
+			synchronise_niffies(rq, dest_rq);
+			rq_unlock(rq);
+			rq = dest_rq;
+		}
 	}
 out:
 	if (queued && !cpumask_subset(new_mask, &old_mask))
