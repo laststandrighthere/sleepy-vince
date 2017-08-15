@@ -441,31 +441,6 @@ static inline void double_rq_unlock(struct rq *rq1, struct rq *rq2)
 		__release(rq2->lock);
 }
 
-/* Grab two rq locks for migration, holding the pi_lock of p and return the
- * task rq of p */
-static inline struct rq *task_rq_double_lock(struct task_struct *p, struct rq *dest_rq)
-	__acquires(p->pi_lock)
-	__acquires(rq->lock)
-	__acquires(dest_rq->lock)
-{
-	unsigned long flags;
-	struct rq *rq;
-
-	local_irq_save(flags);
-	while (42) {
-		raw_spin_lock(&p->pi_lock);
-		rq = task_rq(p);
-		__double_rq_lock(rq, dest_rq);
-		if (likely(rq == task_rq(p)))
-			break;
-		double_rq_unlock(rq, dest_rq);
-		raw_spin_unlock(&p->pi_lock);
-	}
-	local_irq_restore(flags);
-
-	return rq;
-}
-
 static inline void lock_all_rqs(void)
 {
 	int cpu;
@@ -1399,9 +1374,15 @@ static inline void deactivate_task(struct task_struct *p, struct rq *rq)
 #ifdef CONFIG_SMP
 void set_task_cpu(struct task_struct *p, unsigned int cpu)
 {
-	struct rq *rq = task_rq(p);
-	bool queued;
+	struct rq *rq;
 
+	if (task_cpu(p) == cpu)
+		return;
+
+	/* Do NOT call set_task_cpu on a currently queued task as we will not
+	 * be reliably holding the rq lock after changing cpu. */
+	BUG_ON(task_queued(p));
+	rq = task_rq(p);
 #ifdef CONFIG_LOCKDEP
 	/*
 	 * The caller should hold either p->pi_lock or rq->lock, when changing
@@ -1411,10 +1392,8 @@ void set_task_cpu(struct task_struct *p, unsigned int cpu)
 	 * task_rq_lock().
 	 */
 	WARN_ON_ONCE(debug_locks && !(lockdep_is_held(&p->pi_lock) ||
-				      lockdep_is_held(&task_rq(p)->lock)));
+				      lockdep_is_held(rq->lock)));
 #endif
-	if (task_cpu(p) == cpu)
-		return;
 	trace_sched_migrate_task(p, cpu);
 	perf_event_task_migrate(p);
 
@@ -1424,6 +1403,8 @@ void set_task_cpu(struct task_struct *p, unsigned int cpu)
 	 * per-task data have been completed by this moment.
 	 */
 	smp_wmb();
+
+	p->wake_cpu = cpu;
 
 	if (task_running(rq, p)) {
 		/*
@@ -1435,23 +1416,19 @@ void set_task_cpu(struct task_struct *p, unsigned int cpu)
 		/*
 		 * We can't change the task_thread_info cpu on a running task
 		 * as p will still be protected by the rq lock of the cpu it
-		 * is still running on so we set the wake_cpu for it to be
+		 * is still running on so we only set the wake_cpu for it to be
 		 * lazily updated once off the cpu.
 		 */
-		p->wake_cpu = cpu;
 		return;
 	}
 
-	if ((queued = task_queued(p)))
-		dequeue_task(rq, p, 0);
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	p->cpu = cpu;
 #else
 	task_thread_info(p)->cpu = cpu;
 #endif
-	p->wake_cpu = cpu;
-	if (queued)
-		enqueue_task(cpu_rq(cpu), p, 0);
+	/* We're no longer protecting p after this point since we're holding
+	 * the wrong runqueue lock. */
 }
 #endif /* CONFIG_SMP */
 
@@ -1933,8 +1910,8 @@ static int valid_task_cpu(struct task_struct *p)
 
 	if (unlikely(!cpumask_weight(&valid_mask))) {
 		/* Hotplug boot threads do this before the CPU is up */
-		printk(KERN_INFO "SCHED: No cpumask for %s/%d\n", p->comm, p->pid);
-		return cpumask_any(tsk_cpus_allowed(p));
+		printk(KERN_INFO "SCHED: No cpumask for %s/%d weight %d\n", p->comm, p->pid, cpumask_weight(&p->cpus_allowed));
+		return cpumask_any(&p->cpus_allowed);
 	}
 	return cpumask_any(&valid_mask);
 }
@@ -5457,30 +5434,12 @@ void __do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask
 }
 
 /*
- * Calling do_set_cpus_allowed from outside the scheduler code may make the
- * task not be able to run on its current CPU so we resched it here.
+ * Calling do_set_cpus_allowed from outside the scheduler code should not be
+ * called on a running or queued task. We should be holding pi_lock.
  */
 void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 {
 	__do_set_cpus_allowed(p, new_mask);
-	if (needs_other_cpu(p, task_cpu(p))) {
-		struct rq *rq;
-
-		set_task_cpu(p, valid_task_cpu(p));
-		rq = __task_rq_lock(p);
-		resched_task(p);
-		__task_rq_unlock(rq);
-	}
-}
-
-/*
- * For internal scheduler calls to do_set_cpus_allowed which will resched
- * themselves if needed.
- */
-static void _do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
-{
-	__do_set_cpus_allowed(p, new_mask);
-	/* __set_cpus_allowed_ptr will handle the reschedule in this variant */
 	if (needs_other_cpu(p, task_cpu(p)))
 		set_task_cpu(p, valid_task_cpu(p));
 }
@@ -5765,8 +5724,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 	}
 
 	queued = task_queued(p);
-
-	_do_set_cpus_allowed(p, new_mask);
+	__do_set_cpus_allowed(p, new_mask);
 
 	if (kthread) {
 		/*
@@ -5791,25 +5749,28 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 			resched_task(p);
 	} else {
 		int cpu = cpumask_any_and(cpu_valid_mask, new_mask);
-		struct rq *dest_rq = cpu_rq(cpu);
 
-		/* Grab both rq locks, set task cpu, then switch to dest lock */
-		rq_unlock(rq);
-		/* rq is currently protect p */
-		rq = task_rq_double_lock(p, dest_rq);
-		set_task_cpu(p, cpu);
-		/* dest_rq is now protecting p */
-		if (likely(rq != dest_rq)) {
-			synchronise_niffies(rq, dest_rq);
+		if (queued) {
+			/*
+			 * Switch runqueue locks after dequeueing the task
+			 * here while still holding the pi_lock to be holding
+			 * the correct lock for enqueueing.
+			 */
+			dequeue_task(rq, p, 0);
 			rq_unlock(rq);
-			rq = dest_rq;
+
+			rq = cpu_rq(cpu);
+			rq_lock(rq);
 		}
+		set_task_cpu(p, cpu);
+		if (queued)
+			enqueue_task(rq, p, 0);
 	}
-out:
-	if (queued && !cpumask_subset(new_mask, &old_mask))
+	if (queued)
 		try_preempt(p, rq);
 	if (running_wrong)
 		preempt_disable();
+out:
 	task_rq_unlock(rq, p, &flags);
 
 	if (running_wrong) {
