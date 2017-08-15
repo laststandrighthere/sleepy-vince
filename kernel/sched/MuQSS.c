@@ -5440,8 +5440,14 @@ void __do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask
 void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 {
 	__do_set_cpus_allowed(p, new_mask);
-	if (needs_other_cpu(p, task_cpu(p)))
+	if (needs_other_cpu(p, task_cpu(p))) {
+		struct rq *rq;
+
+		rq = __task_rq_lock(p);
 		set_task_cpu(p, valid_task_cpu(p));
+		resched_task(p);
+		__task_rq_unlock(rq);
+	}
 }
 #endif
 
