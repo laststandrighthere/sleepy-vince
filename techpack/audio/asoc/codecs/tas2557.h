@@ -443,7 +443,7 @@ struct tas2557_priv {
 	int (*set_calibration)(struct tas2557_priv *pTAS2557,
 		int calibration);
 	void (*clearIRQ)(struct tas2557_priv *pTAS2557);
-	void (*enableIRQ)(struct tas2557_priv *pTAS2557, bool enable);
+	void (*enableIRQ)(struct tas2557_priv *pTAS2557, bool enable, bool startup_chk);
 	void (*hw_reset)(struct tas2557_priv *pTAS2557);
 	/* device is working, but system is suspended */
 	int (*runtime_suspend)(struct tas2557_priv *pTAS2557);
