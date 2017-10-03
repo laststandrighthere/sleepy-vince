@@ -79,8 +79,6 @@ static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
 	: "memory");
 }
 
-#define arch_spin_lock_flags(lock, flags) arch_spin_lock(lock)
-
 static inline void arch_spin_lock(arch_spinlock_t *lock)
 {
 	unsigned int tmp;
@@ -187,9 +185,6 @@ static inline int arch_spin_is_contended(arch_spinlock_t *lock)
 #define arch_spin_is_contended	arch_spin_is_contended
 
 #include <asm/qrwlock.h>
-
-#define arch_read_lock_flags(lock, flags) arch_read_lock(lock)
-#define arch_write_lock_flags(lock, flags) arch_write_lock(lock)
 
 /*
  * Accesses appearing in program order before a spin_lock() operation

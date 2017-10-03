@@ -214,9 +214,6 @@ static inline int arch_write_trylock(arch_rwlock_t *lock)
 	return result;
 }
 
-#define arch_read_lock_flags(p, f) arch_read_lock(p)
-#define arch_write_lock_flags(p, f) arch_write_lock(p)
-
 #define arch_read_can_lock(rw)		(!((rw)->lock & 0x80000000UL))
 #define arch_write_can_lock(rw)	(!(rw)->lock)
 
