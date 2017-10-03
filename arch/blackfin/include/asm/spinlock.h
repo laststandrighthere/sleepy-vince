@@ -53,16 +53,6 @@ static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
 	smp_cond_load_acquire(&lock->lock, !VAL);
 }
 
-static inline int arch_read_can_lock(arch_rwlock_t *rw)
-{
-	return __raw_uncached_fetch_asm(&rw->lock) > 0;
-}
-
-static inline int arch_write_can_lock(arch_rwlock_t *rw)
-{
-	return __raw_uncached_fetch_asm(&rw->lock) == RW_LOCK_BIAS;
-}
-
 static inline void arch_read_lock(arch_rwlock_t *rw)
 {
 	__raw_read_lock_asm(&rw->lock);
