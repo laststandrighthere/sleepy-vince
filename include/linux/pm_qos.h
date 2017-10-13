@@ -42,7 +42,6 @@ enum pm_qos_flags_status {
 #define PM_QOS_LATENCY_ANY			((s32)(~(__u32)0 >> 1))
 
 #define PM_QOS_FLAG_NO_POWER_OFF	(1 << 0)
-#define PM_QOS_FLAG_REMOTE_WAKEUP	(1 << 1)
 
 enum pm_qos_req_type {
 	PM_QOS_REQ_ALL_CORES = 0,
