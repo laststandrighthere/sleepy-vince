@@ -46,6 +46,7 @@
 #define	SCHED_PRI_TICKS(ts)						\
     (SCHED_TICK_HZ((ts)) /						\
     (roundup(SCHED_TICK_TOTAL((ts)), SCHED_PRI_RANGE) / SCHED_PRI_RANGE))
+#define	SCHED_SLP_RUN_FORK	((HZ / 2) << SCHED_TICK_SHIFT)
 
 /*
  * These parameters determine the slice behavior for batch work.
@@ -407,6 +408,56 @@ struct task_struct *sched_choose(struct rq *rq)
 	return NULL;
 }
 
+void sched_fork_thread(struct task_struct *td, struct task_struct *child)
+{
+	struct sched_ktz_entity *ts;
+	struct sched_ktz_entity *ts2;
+	struct ktz_tdq *tdq;
+
+	tdq = &this_rq()->ktz;
+	THREAD_LOCK_ASSERT(td, MA_OWNED);
+	ts = KTZ_SE(td);
+	ts2 = KTZ_SE(child);
+	/*child->td_oncpu = NOCPU;
+	child->td_lastcpu = NOCPU;
+	child->td_lock = TDQ_LOCKPTR(tdq);
+	child->td_cpuset = cpuset_ref(td->td_cpuset);
+	ts2->ts_cpu = ts->ts_cpu;
+	ts2->ts_flags = 0;*/
+	/*
+	 * Grab our parents cpu estimation information.
+	 */
+	ts2->ticks = ts->ticks;
+	ts2->ltick = ts->ltick;
+	ts2->ftick = ts->ftick;
+	/*
+	 * Do not inherit any borrowed priority from the parent.
+	 */
+	//child->td_priority = child->td_base_pri;
+	/*
+	 * And update interactivity score.
+	 */
+	ts2->slptime = ts->slptime;
+	ts2->runtime = ts->runtime;
+	/* Attempt to quickly learn interactivity. */
+	ts2->slice = compute_slice(tdq) - sched_slice_min;
+}
+
+static void sched_interact_fork(struct task_struct *td)
+{
+	struct sched_ktz_entity *ts;
+	int ratio;
+	int sum;
+
+	ts = KTZ_SE(td);
+	sum = ts->runtime + ts->slptime;
+	if (sum > SCHED_SLP_RUN_FORK) {
+		ratio = sum / SCHED_SLP_RUN_FORK;
+		ts->runtime /= ratio;
+		ts->slptime /= ratio;
+	}
+}
+
 static inline struct task_struct *ktz_task_of(struct sched_ktz_entity *ktz_se)
 {
 	return container_of(ktz_se, struct task_struct, ktz_se);
@@ -600,13 +651,21 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 
 static void task_fork_ktz(struct task_struct *p)
 {
-	struct sched_ktz_entity *ktz_se = KTZ_SE(p);
-	if (task_curr(p)) {
-		pctcpu_update(ktz_se, true);
-		ktz_se->runtime += tickincr;
-		interact_update(p);
-		compute_priority(p);
-	}
+	struct task_struct *child = p;
+	struct task_struct *parent = p->parent;
+	struct sched_ktz_entity *cktz_se = KTZ_SE(child);
+	struct sched_ktz_entity *pktz_se = KTZ_SE(parent);
+
+	/* Update parent stats. */
+	pctcpu_update(pktz_se, task_curr(parent));	
+	sched_fork_thread(parent, child);
+
+	sched_interact_fork(child);
+	compute_priority(child);
+
+	pktz_se->runtime += tickincr;
+	interact_update(parent);
+	compute_priority(parent);
 }
 
 static void task_dead_ktz(struct task_struct *p)
