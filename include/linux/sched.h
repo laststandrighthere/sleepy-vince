@@ -1390,6 +1390,32 @@ struct sched_dl_entity {
 	struct hrtimer dl_timer;
 };
 
+struct sched_ktz_entity {
+	/* legacy */
+	struct list_head run_list;
+	struct runq 	*curr_runq;	/* Current runq. */
+	struct list_head runq;	/* node in runq. */
+	short		flags;	/* TSF_* flags. */
+	int		cpu;	/* CPU that we have affinity for. NU */
+	int		rltick;	/* Real last tick, for affinity. NU */
+	int		slice;	/* Ticks of slice remaining. */
+	unsigned long	slptime;	/* Number of ticks we vol. slept */
+	unsigned long long	slptick;/* First tick of current sleep */
+	unsigned long	runtime;	/* Number of ticks we were running */
+	unsigned long		ltick;	/* Last tick that we were running on */
+	unsigned long		ftick;	/* First tick that we were running on */
+	unsigned long		ticks;	/* Tick count */
+	int		rqindex;	/* Index of the runq in the tdq. */
+#ifdef KTR
+	//char		ts_name[TS_NAME_LEN];
+#endif
+	/* May not be useful. */
+	int		base_user_pri;
+	int		lend_user_pri;
+	int		user_pri;
+	int		state;
+};
+
 union rcu_special {
 	struct {
 		u8 blocked;
@@ -1460,6 +1486,8 @@ struct task_struct {
 	const struct sched_class *sched_class;
 	struct sched_entity se;
 	struct sched_rt_entity rt;
+	struct sched_ktz_entity		ktz_se;
+	int				ktz_prio;
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
 #endif
@@ -1937,6 +1965,23 @@ struct task_struct {
  * Do not put anything below here!
  */
 };
+
+#define MIN_KTZ_PRIO 125
+#define MAX_KTZ_PRIO 139
+#define KTZ_PRIO_RANGE (MAX_KTZ_PRIO - MIN_KTZ_PRIO + 1)
+#define KTZ_PREEMPTED 0x1
+
+static inline int ktz_prio(int prio)
+{
+	if (prio >= MIN_KTZ_PRIO && prio <= MAX_KTZ_PRIO)
+		return 1;
+	return 0;
+}
+
+static inline int ktz_task(struct task_struct *p)
+{
+	return ktz_prio(p->prio);
+}
 
 #ifdef CONFIG_ARCH_WANTS_DYNAMIC_TASK_STRUCT
 extern int arch_task_struct_size __read_mostly;
