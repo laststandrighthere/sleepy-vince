@@ -10,11 +10,13 @@
 /* Macros and defines. */
 /* Timeshare range = Whole range of this scheduler. */
 #define	PRI_TIMESHARE_RANGE	(PRI_MAX_TIMESHARE - PRI_MIN_TIMESHARE + 1)
-#define PRI_MIN_TIMESHARE	MIN_KTZ_PRIO
-#define PRI_MAX_TIMESHARE	MAX_KTZ_PRIO
+//#define PRI_MIN_TIMESHARE	MIN_KTZ_PRIO
+//#define PRI_MAX_TIMESHARE	MAX_KTZ_PRIO
+#define PRI_MIN_TIMESHARE	100
+#define PRI_MAX_TIMESHARE	139
 
 /* Interactive range. */
-#define	PRI_INTERACT_RANGE	5
+#define	PRI_INTERACT_RANGE	12
 #define	PRI_MIN_INTERACT	PRI_MIN_TIMESHARE
 #define	PRI_MAX_INTERACT	(PRI_MIN_TIMESHARE + PRI_INTERACT_RANGE - 1)
 
@@ -26,8 +28,8 @@
 /* Batch range separation. */ /* TODO : Hardcoded */
 #define	SCHED_PRI_NRESV		(PRIO_MAX - PRIO_MIN)
 #define	SCHED_PRI_NHALF		(SCHED_PRI_NRESV / 2)
-#define	SCHED_PRI_MIN		133
-#define	SCHED_PRI_MAX		136
+#define	SCHED_PRI_MIN		(PRI_MIN_BATCH + 7)
+#define	SCHED_PRI_MAX		(SCHED_PRI_MIN + 12)
 #define	SCHED_PRI_RANGE		(SCHED_PRI_MAX - SCHED_PRI_MIN + 1)
 
 /* Macros/defines used for stat computation. */
@@ -81,6 +83,8 @@ static int sched_interact = SCHED_INTERACT_THRESH;
 static int sched_slice = 10;	/* reset during boot. */
 static int sched_slice_min = 1;	/* reset during boot. */
 
+unsigned int sysctl_ktz_enabled = 1; /* Enabled by default */
+
 /* Helper macros / defines. */
 #define LOG(...) 	printk_deferred(__VA_ARGS__)
 #define KTZ_SE(p)	(&(p)->ktz_se)
@@ -97,20 +101,22 @@ void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 	runq_init(&ktz_tdq->realtime);
 	runq_init(&ktz_tdq->timeshare);
 	runq_init(&ktz_tdq->idle);
-	LOG("runq realtime : %p", ktz_tdq->realtime);
-	LOG("runq timeshare : %p", ktz_tdq->timeshare);
-	LOG("runq idle : %p", ktz_tdq->idle);
 	
 	/* Print config. */
 	PRINT(tickincr);
-
-#define IS_KTZ(prio) \
-	LOG("ktz_prio(" #prio ") = %d\n", ktz_prio(prio))
-
-	IS_KTZ(0);
-	IS_KTZ(50);
-	IS_KTZ(100);
-	IS_KTZ(20);
+	PRINT(PRI_MIN_TIMESHARE);
+	PRINT(PRI_MAX_TIMESHARE);
+	PRINT(PRI_INTERACT_RANGE);
+	PRINT(PRI_MIN_INTERACT);
+	PRINT(PRI_MAX_INTERACT);
+	PRINT(PRI_BATCH_RANGE);
+	PRINT(PRI_MIN_BATCH);
+	PRINT(PRI_MAX_BATCH);
+	PRINT(SCHED_PRI_NRESV);
+	PRINT(SCHED_PRI_NHALF);
+	PRINT(SCHED_PRI_MIN);
+	PRINT(SCHED_PRI_MAX);
+	PRINT(SCHED_PRI_RANGE);
 }
 
 static void pctcpu_update(struct sched_ktz_entity *ts, bool run)
@@ -289,7 +295,7 @@ static void compute_priority(struct task_struct *p)
 			}
 			pri += d;
 		}
-		pri += task_nice(p);
+		pri += (int)((40 / 120) * task_nice(p));
 	}
 
 	/* Test : */

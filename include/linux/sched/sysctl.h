@@ -18,6 +18,7 @@ extern unsigned int sysctl_sched_latency;
 extern unsigned int sysctl_sched_min_granularity;
 extern unsigned int sysctl_sched_wakeup_granularity;
 extern unsigned int sysctl_sched_child_runs_first;
+extern unsigned int sysctl_ktz_enabled;
 
 enum sched_tunable_scaling {
 	SCHED_TUNABLESCALING_NONE,
