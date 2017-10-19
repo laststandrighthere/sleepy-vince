@@ -97,9 +97,20 @@ void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 	runq_init(&ktz_tdq->realtime);
 	runq_init(&ktz_tdq->timeshare);
 	runq_init(&ktz_tdq->idle);
+	LOG("runq realtime : %p", ktz_tdq->realtime);
+	LOG("runq timeshare : %p", ktz_tdq->timeshare);
+	LOG("runq idle : %p", ktz_tdq->idle);
 	
 	/* Print config. */
 	PRINT(tickincr);
+
+#define IS_KTZ(prio) \
+	LOG("ktz_prio(" #prio ") = %d\n", ktz_prio(prio))
+
+	IS_KTZ(0);
+	IS_KTZ(50);
+	IS_KTZ(100);
+	IS_KTZ(20);
 }
 
 static void pctcpu_update(struct sched_ktz_entity *ts, bool run)

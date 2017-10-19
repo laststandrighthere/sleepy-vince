@@ -10,19 +10,19 @@ void runq_init(struct runq *q)
 
 void runq_set_bit(struct runq *q, int pri)
 {
-	unsigned long bm = q->status;
+	unsigned long *bm = q->status;
 	bitmap_set(bm, pri, 1);
 }
 
 void runq_clear_bit(struct runq *q, int pri)
 {
-	unsigned long bm = q->status;
+	unsigned long *bm = q->status;
 	bitmap_clear(bm, pri, 1);
 }
 
 void runq_add(struct runq * q, struct task_struct *p, int flags)
 {
-	runq_add_pri(q, p, p->prio, flags);
+	runq_add_pri(q, p, p->ktz_prio, flags);
 }
 
 void runq_add_pri(struct runq * q, struct task_struct *p, int pri, int flags)
@@ -31,11 +31,13 @@ void runq_add_pri(struct runq * q, struct task_struct *p, int pri, int flags)
 	struct sched_ktz_entity *ke = &p->ktz_se;
 	ke->curr_runq = q;
 
+	pri = pri % KTZ_HEADS_PER_RUNQ;
 
 	//ke->rqindex = (pri - MIN_KTZ_PRIO) / KTZ_PRIO_PER_QUEUE;
 	ke->rqindex = pri;
 	/* Sanity check. */
-	if (ke->rqindex > KTZ_HEADS_PER_RUNQ)
+	//printk_deferred("runq_add_pri for task = %d, pri = %d", p->pid, pri);
+	if (pri < 0 || KTZ_HEADS_PER_RUNQ <= pri)
 		BUG();
 	runq_set_bit(q, pri);
 	head = &q->queues[pri];
