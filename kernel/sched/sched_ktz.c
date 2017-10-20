@@ -518,7 +518,7 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 	if (is_enqueued(td) && prio < td->ktz_prio) {
 		tdq_runq_rem(tdq, td);
 		td->ktz_prio = prio;
-		tdq_add(tdq, p, 0);
+		tdq_add(tdq, td, 0);
 		return;
 	}
 	/*
@@ -641,7 +641,7 @@ static void dequeue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 	ktz_se->curr_runq = NULL;
 	tdq_load_rem(tdq, p);
 	if (p->ktz_prio == tdq->lowpri)
-		tdq_setlowpri(rq, NULL);
+		tdq_setlowpri(tdq, NULL);
 }
 
 static void yield_task_ktz(struct rq *rq)
@@ -757,7 +757,7 @@ static void switched_to_ktz(struct rq *rq, struct task_struct *p)
 
 static void prio_changed_ktz(struct rq*rq, struct task_struct *p, int oldprio)
 {
-	sched_thread_priority(p, p->prio);
+	sched_thread_priority(TDQ(rq), p, p->prio);
 }
 
 static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
