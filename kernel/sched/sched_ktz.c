@@ -90,6 +90,7 @@ unsigned int sysctl_ktz_enabled = 1; /* Enabled by default */
 #define KTZ_SE(p)	(&(p)->ktz_se)
 #define PRINT(name)	printk_deferred(#name "\t\t = %d", name)
 #define TDQ(rq)		(&(rq)->ktz)
+#define RQ(tdq)		(container_of(tdq, struct rq, ktz))
 
 //#define LOG(...) 	do{}while(0)
 
@@ -474,6 +475,68 @@ static void sched_interact_fork(struct task_struct *td)
 		ts->slptime /= ratio;
 	}
 }
+ 
+static inline bool is_enqueued(struct task_struct *p)
+{
+	return KTZ_SE(p)->curr_runq;
+}
+
+/*
+ * Set lowpri to its exact value by searching the run-queue and
+ * evaluating curthread.  curthread may be passed as an optimization.
+ */
+static void tdq_setlowpri(struct ktz_tdq *tdq, struct task_struct *ctd)
+{
+	struct task_struct *td;
+	struct rq *rq = RQ(tdq);
+
+	TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	if (ctd == NULL)
+		ctd = rq->curr;
+	td = tdq_choose(tdq);
+	if (td == NULL || td->ktz_prio > ctd->ktz_prio)
+		tdq->lowpri = ctd->ktz_prio;
+	else
+		tdq->lowpri = td->ktz_prio;
+}
+
+static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, int prio)
+{
+	struct rq *rq = RQ(tdq);
+	struct sched_ktz_entity *ts = KTZ_SE(td);
+	int oldpri;
+
+	THREAD_LOCK_ASSERT(td, MA_OWNED);
+	if (td->ktz_prio == prio)
+		return;
+	/*
+	 * If the priority has been elevated due to priority
+	 * propagation, we may have to move ourselves to a new
+	 * queue.  This could be optimized to not re-add in some
+	 * cases.
+	 */
+	if (is_enqueued(td) && prio < td->ktz_prio) {
+		tdq_runq_rem(tdq, td);
+		td->ktz_prio = prio;
+		tdq_add(tdq, p, 0);
+		return;
+	}
+	/*
+	 * If the thread is currently running we may have to adjust the lowpri
+	 * information so other cpus are aware of our current priority.
+	 */
+	if (task_curr(td)) {
+		//tdq = TDQ_CPU(ts->ts_cpu); TODO : CAREFUL WITH SMP !
+		oldpri = td->ktz_prio;
+		td->ktz_prio = prio;
+		if (prio < tdq->lowpri)
+			tdq->lowpri = prio;
+		else if (tdq->lowpri == oldpri)
+			tdq_setlowpri(tdq, td);
+		return;
+	}
+	td->ktz_prio = prio;
+}
 
 static inline struct task_struct *ktz_task_of(struct sched_ktz_entity *ktz_se)
 {
@@ -544,11 +607,6 @@ static inline void print_children(struct task_struct *p)
 	}
 }
 
-static inline bool is_enqueued(struct task_struct *p)
-{
-	return KTZ_SE(p)->curr_runq;
-}
-
 static void enqueue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct ktz_tdq *tdq = TDQ(rq);
@@ -566,7 +624,6 @@ static void enqueue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 		pctcpu_update(ktz_se, false);
 	}
 	ktz_se->slice = 0;
-
 	tdq_add(tdq, p, 0);
 }
 
@@ -583,10 +640,13 @@ static void dequeue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 	tdq_runq_rem(tdq, p);
 	ktz_se->curr_runq = NULL;
 	tdq_load_rem(tdq, p);
+	if (p->ktz_prio == tdq->lowpri)
+		tdq_setlowpri(rq, NULL);
 }
 
 static void yield_task_ktz(struct rq *rq)
 {
+	/* No neeed to renqueue here as we will do it in put_prev_task. */
 }
 
 /*
@@ -594,15 +654,13 @@ static void yield_task_ktz(struct rq *rq)
  */
 static void check_preempt_curr_ktz(struct rq *rq, struct task_struct *p, int flags)
 {
-	/*int pri = p->ktz_prio;
+	int pri = p->ktz_prio;
 	int cpri = rq->curr->ktz_prio;
 
-	if (cpri <= pri)
-		return false;
-	else
-		return true;*/
+	if (pri < cpri)
+		resched_curr(rq);
 
-	// TODO : Add when adding SMP support.
+	// TODO : Add when adding SMP support. ?
 	/*if (remote && pri <= PRI_MAX_INTERACT && cpri > PRI_MAX_INTERACT)
 		return (1);*/
 }
@@ -661,7 +719,7 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (!TD_IS_IDLETHREAD(curr) && ++ktz_se->slice >= compute_slice(tdq)) {
 		ktz_se->slice = 0;
-		ktz_se->flags |= TDF_SLICEEND;
+		//ktz_se->flags |= TDF_SLICEEND;
 		resched_curr(rq);
 	}
 }
@@ -699,6 +757,7 @@ static void switched_to_ktz(struct rq *rq, struct task_struct *p)
 
 static void prio_changed_ktz(struct rq*rq, struct task_struct *p, int oldprio)
 {
+	sched_thread_priority(p, p->prio);
 }
 
 static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
