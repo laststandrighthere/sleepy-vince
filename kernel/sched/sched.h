@@ -516,6 +516,9 @@ struct rt_rq {
 	unsigned long rt_nr_total;
 	int overloaded;
 	struct plist_head pushable_tasks;
+
+	struct sched_avg avg;
+
 #ifdef HAVE_RT_PUSH_IPI
 	int push_flags;
 	int push_cpu;
@@ -1670,6 +1673,7 @@ static inline int hrtick_enabled(struct rq *rq)
 
 #ifdef CONFIG_SMP
 extern void sched_avg_update(struct rq *rq);
+extern unsigned long sched_get_rt_rq_util(int cpu);
 
 #ifndef arch_scale_freq_capacity
 static __always_inline
