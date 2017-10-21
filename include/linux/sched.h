@@ -1415,6 +1415,7 @@ struct sched_ktz_entity {
 	int		lend_user_pri;
 	int		user_pri;
 	int		state;
+	int		preempted; /* Is this task being preempted ? */
 };
 
 union rcu_special {

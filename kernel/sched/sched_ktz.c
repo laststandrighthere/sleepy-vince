@@ -84,6 +84,8 @@ static int sched_slice = 10;	/* reset during boot. */
 static int sched_slice_min = 1;	/* reset during boot. */
 
 unsigned int sysctl_ktz_enabled = 1; /* Enabled by default */
+unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
+						 0 = default. */
 
 /* Helper macros / defines. */
 #define LOG(...) 	printk_deferred(__VA_ARGS__)
@@ -252,6 +254,8 @@ tdq_load_rem(struct ktz_tdq *tdq, struct task_struct *p)
 static inline int compute_slice(struct ktz_tdq *tdq) 
 {
 	int load = tdq->sysload - 1;
+	if (sysctl_ktz_forced_timeslice)
+		return sysctl_ktz_forced_timeslice;
 	if (load >= SCHED_SLICE_MIN_DIVISOR)
 		return (sched_slice_min);
 	if (load <= 1)
@@ -296,7 +300,7 @@ static void compute_priority(struct task_struct *p)
 			}
 			pri += d;
 		}
-		pri += (int)((40 * task_nice(p)) / 120);
+		pri += (int)((40 * task_nice(p)) / 104);
 	}
 
 	/* Test : */
@@ -654,11 +658,18 @@ static void yield_task_ktz(struct rq *rq)
  */
 static void check_preempt_curr_ktz(struct rq *rq, struct task_struct *p, int flags)
 {
+	struct task_struct *curr = rq->curr;
+	struct sched_ktz_entity *ktz_se = KTZ_SE(curr);
 	int pri = p->ktz_prio;
-	int cpri = rq->curr->ktz_prio;
+	int cpri = curr->ktz_prio;
 
-	if (pri < cpri)
+	if (pri < cpri) {
+		if (curr->sched_class == &ktz_sched_class) {
+			/* Mark the task being preempted as SRQ_PREEMPTED. */
+			ktz_se->preempted = 1;
+		}
 		resched_curr(rq);
+	}
 
 	// TODO : Add when adding SMP support. ?
 	/*if (remote && pri <= PRI_MAX_INTERACT && cpri > PRI_MAX_INTERACT)
@@ -680,10 +691,12 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 static void put_prev_task_ktz(struct rq *rq, struct task_struct *prev)
 {
 	struct ktz_tdq *tdq = TDQ(rq);
+	struct sched_ktz_entity *ktz_se = KTZ_SE(prev);
 
 	if (is_enqueued(prev)) {
 		tdq_runq_rem(tdq, prev);
-		tdq_runq_add(tdq, prev, 0);
+		tdq_runq_add(tdq, prev, ktz_se->preempted ? SRQ_PREEMPTED : 0);
+		ktz_se->preempted = 0; /* Reset preempted bit. */
 	}
 }
 
