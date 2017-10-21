@@ -296,7 +296,7 @@ static void compute_priority(struct task_struct *p)
 			}
 			pri += d;
 		}
-		pri += (int)((40 / 120) * task_nice(p));
+		pri += (int)((40 * task_nice(p)) / 120);
 	}
 
 	/* Test : */
