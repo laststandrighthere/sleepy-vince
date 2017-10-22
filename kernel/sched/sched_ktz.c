@@ -758,6 +758,16 @@ static void task_fork_ktz(struct task_struct *p)
 
 static void task_dead_ktz(struct task_struct *p)
 {
+	struct task_struct *parent = p->parent;
+	struct task_struct *child = p;
+	struct sched_ktz_entity *pktz_se = KTZ_SE(parent);
+	struct sched_ktz_entity *cktz_se = KTZ_SE(child);
+
+	/* Add runtime of child to the parent. This penalizes parents that
+	 * spawn batch children such as make. */
+	pktz_se->runtime += cktz_se->runtime;
+	interact_update(parent);
+	compute_priority(parent);
 }
 
 static void switched_from_ktz(struct rq *rq, struct task_struct *p)
