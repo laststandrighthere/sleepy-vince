@@ -1060,6 +1060,8 @@ TRACE_EVENT(sched_get_nr_running_avg,
 		__entry->max_nr, __entry->big_max_nr)
 );
 
+#include "walt.h"
+
 #endif /* CONFIG_SMP */
 #endif /* _TRACE_SCHED_H */
 
