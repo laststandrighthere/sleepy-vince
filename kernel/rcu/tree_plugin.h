@@ -28,6 +28,7 @@
 #include <linux/gfp.h>
 #include <linux/oom.h>
 #include <linux/smpboot.h>
+#include <linux/sched/isolation.h>
 #include <uapi/linux/sched/types.h>
 #include "../time/tick-internal.h"
 
