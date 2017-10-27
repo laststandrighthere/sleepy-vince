@@ -2594,7 +2594,7 @@ static void rcu_bind_gp_kthread(void)
 
 	if (!tick_nohz_full_enabled())
 		return;
-	housekeeping_affine(current);
+	housekeeping_affine(current, HK_FLAG_RCU);
 }
 
 /* Record the current task on dyntick-idle entry. */
