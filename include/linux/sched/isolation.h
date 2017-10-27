@@ -7,15 +7,10 @@
 
 #ifdef CONFIG_NO_HZ_FULL
 extern cpumask_var_t housekeeping_mask;
-
-static inline int housekeeping_any_cpu(void)
-{
-	return cpumask_any_and(housekeeping_mask, cpu_online_mask);
-}
-
 extern void __init housekeeping_init(void);
-
 #else
+static inline void housekeeping_init(void) { }
+#endif /* CONFIG_NO_HZ_FULL */
 
 static inline int housekeeping_any_cpu(void)
 {
@@ -29,10 +24,6 @@ static inline int housekeeping_any_cpu(void)
 
         return cpu;
 }
-
-static inline void housekeeping_init(void) { }
-#endif /* CONFIG_NO_HZ_FULL */
-
 
 static inline const struct cpumask *housekeeping_cpumask(void)
 {
