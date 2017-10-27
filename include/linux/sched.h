@@ -229,8 +229,6 @@ extern void sched_init_smp(void);
 extern asmlinkage void schedule_tail(struct task_struct *prev);
 extern void init_idle(struct task_struct *idle, int cpu);
 
-extern cpumask_var_t cpu_isolated_map;
-
 extern int runqueue_is_locked(int cpu);
 
 /*
