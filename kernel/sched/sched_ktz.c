@@ -544,6 +544,8 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 	td->ktz_prio = prio;
 }
 
+static struct task_struct *load_balance_ktz(struct rq *this_rq);
+
 static inline struct task_struct *ktz_task_of(struct sched_ktz_entity *ktz_se)
 {
 	return container_of(ktz_se, struct task_struct, ktz_se);
@@ -701,13 +703,21 @@ static void check_preempt_curr_ktz(struct rq *rq, struct task_struct *p, int fla
 static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct* prev, struct pin_cookie cookie)
 {
 	struct ktz_tdq *tdq = TDQ(rq);
-	struct sched_ktz_entity *next;
 	struct task_struct *next_task;
-	struct task_struct *next_ule;
 
-	put_prev_task(rq, prev);
-	next_task = tdq_choose(tdq);
-	return next_task;
+	if (tdq->load) {
+		put_prev_task(rq, prev);
+		next_task = tdq_choose(tdq);
+		return next_task;
+	}
+	else {
+		/* Need load balancing. */
+		next_task = load_balance_ktz(rq);
+		if (next_task)
+			enqueue_task_ktz(rq, next_task, 0);
+		return next_task;
+		return NULL;
+	}
 }
 
 static void put_prev_task_ktz(struct rq *rq, struct task_struct *prev)
@@ -838,6 +848,52 @@ static inline int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag
 static void migrate_task_rq_ktz(struct task_struct *p)
 {
 }
+
+static struct task_struct *load_balance_ktz(struct rq *this_rq)
+{
+#ifdef CONFIG_SMP
+	int rcpu;
+	int best_cpu = -1;
+	int max_load = 0;
+	struct rq *target_rq;
+	struct ktz_tdq *target_tdq;
+	struct task_struct *stolen;
+
+	rcu_read_lock();
+	/* Try to find the cpu having max load. Naive approach for now. */
+	for_each_cpu(rcpu, cpu_online_mask) {
+		struct rq *rem_rq = cpu_rq(rcpu);
+		struct ktz_tdq *rem_tdq = TDQ(rem_rq);
+
+		if (rem_tdq->load > max_load) {
+			max_load = rem_tdq->load;
+			best_cpu = rcpu;
+		}
+	}
+	rcu_read_unlock();
+
+	if (!max_load) {
+		/* Cannot steal, abort. */
+		LOG("[%d] Cannot steal", smp_processor_id());
+		return NULL;
+	}
+
+	LOG("[%d] Steal from %d", smp_processor_id(), best_cpu);
+	/* Grab a task from this cpu. */
+	target_rq = cpu_rq(rcpu);
+	target_tdq = TDQ(target_rq);
+	raw_spin_lock(&target_rq->lock);
+	stolen = tdq_choose(target_tdq);
+	LOG("[%d] Stole %d from %d", smp_processor_id(), stolen->pid, best_cpu);
+	BUG_ON(stolen == target_rq->curr);
+	dequeue_task_ktz(target_rq, stolen, 0);
+	raw_spin_unlock(&target_rq->lock);
+
+	return stolen;
+#endif
+	return NULL;
+}
+
 #endif
 
 static void update_curr_ktz(struct rq*rq)
