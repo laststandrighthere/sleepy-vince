@@ -613,6 +613,20 @@ static inline void print_children(struct task_struct *p)
 	}
 }
 
+static inline void print_loads(void)
+{
+	int cpu;
+	struct cpumask mask;
+	cpumask_setall(&mask);
+	LOG("CPU loads : ");
+	for_each_cpu(cpu, &mask) {
+		struct rq *rq = cpu_rq(cpu);
+		struct ktz_tdq *tdq = TDQ(rq);
+		LOG("\t| Cpu %d, load = %d\n", cpu, tdq->load);
+	}
+	LOG("##################\n");
+}
+
 static void enqueue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct ktz_tdq *tdq = TDQ(rq);
@@ -798,13 +812,30 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 static inline int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
-	int new_cpu = smp_processor_id();
-	
-	return new_cpu; //set assigned CPU to zero
+	int ccpu;
+	int best_cpu = -1;
+	int min_load = INT_MAX;
+	struct cpumask mask;
+	(void) cpumask_and(&mask, &p->cpus_allowed, cpu_online_mask);
+
+	rcu_read_lock();
+	/* Try to find the cpu having min load. Naive approach for now. */
+	for_each_cpu(ccpu, &mask) {
+		struct rq *rq = cpu_rq(ccpu);
+		struct ktz_tdq *tdq = TDQ(rq);
+
+		if (tdq->load < min_load) {
+			min_load = tdq->load;
+			best_cpu = ccpu;
+		}
+	}
+	rcu_read_unlock();
+
+	BUG_ON(best_cpu == -1);
+	return best_cpu;
 }
 
-
-static void set_cpus_allowed_ktz(struct task_struct *p,  const struct cpumask *new_mask)
+static void migrate_task_rq_ktz(struct task_struct *p)
 {
 }
 #endif
@@ -826,7 +857,8 @@ const struct sched_class ktz_sched_class = {
 
 #ifdef CONFIG_SMP
 	.select_task_rq		= select_task_rq_ktz,
-	.set_cpus_allowed	= set_cpus_allowed_ktz,
+	.migrate_task_rq	= migrate_task_rq_ktz,
+	.set_cpus_allowed       = set_cpus_allowed_common,
 #endif
 
 	.set_curr_task		= set_curr_task_ktz,
