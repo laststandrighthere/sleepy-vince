@@ -875,9 +875,6 @@ static struct task_struct *load_balance_ktz(struct rq *this_rq)
 
 	this_cpu = smp_processor_id();
 
-	LOG("[%d] Is idle, current load :", this_cpu);
-	print_loads();
-
 	rcu_read_lock();
 	/* Try to find the cpu having max load. Naive approach for now. */
 	for_each_cpu(rcpu, cpu_online_mask) {
@@ -896,19 +893,14 @@ static struct task_struct *load_balance_ktz(struct rq *this_rq)
 
 	if (!max_load) {
 		/* Cannot steal, abort. */
-		LOG("[%d] Cannot steal", this_cpu);
-		//print_loads();
 		return NULL;
 	}
 
-	LOG("[%d] Steal from %d", this_cpu, best_cpu);
 	target_rq = cpu_rq(best_cpu);
 	target_tdq = TDQ(target_rq);
 
 	/* Take a task from the target cpu. */
 	raw_spin_lock_irqsave(&target_rq->lock, flags);
-	LOG("Rq locked, curr of %d = %d, tdq : ", best_cpu, target_rq->curr->pid);
-	print_tdq(target_tdq);
 
 	if (target_tdq->load <= 1) {
 		raw_spin_unlock(&target_rq->lock);
@@ -918,35 +910,23 @@ static struct task_struct *load_balance_ktz(struct rq *this_rq)
 
 	stolen = tdq_choose(target_tdq, target_rq->curr);
 	BUG_ON(stolen == target_rq->curr);
-	BUG_ON(task_running(target_rq, stolen));
 	if (stolen == NULL) {
-		/*LOG("Stolen == NULL, tdq of target:");
-		print_tdq(target_tdq);
-		BUG();*/
 		raw_spin_unlock(&target_rq->lock);
 		local_irq_restore(flags);
 		return NULL;
 	}
+
+	BUG_ON(task_running(target_rq, stolen));
 
 	if (!cpumask_test_cpu(this_cpu, tsk_cpus_allowed(stolen))) {
-		LOG("[%d] Stolen task is not allowed.", this_cpu);
 		raw_spin_unlock(&target_rq->lock);
 		local_irq_restore(flags);
 		return NULL;
 	}
-
-	LOG("[%d] Will steal %d", this_cpu, stolen->pid);
-
 	detach_task(target_rq, stolen, this_cpu);
-
 	raw_spin_unlock(&target_rq->lock);
-
 	attach_task(this_rq, stolen);
-
 	local_irq_restore(flags);
-	
-	LOG("[%d] Stole %d from %d, new load:", this_cpu, stolen->pid, best_cpu);
-	print_loads();
 	return stolen;
 }
 
