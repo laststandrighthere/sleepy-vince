@@ -395,40 +395,24 @@ static inline void tdq_runq_rem(struct ktz_tdq *tdq, struct task_struct *td)
 /*
  * Pick the highest priority task we have and return it.
  */
-static struct task_struct *tdq_choose(struct ktz_tdq *tdq)
+static struct task_struct *tdq_choose(struct ktz_tdq *tdq, struct task_struct *except)
 {
 	struct task_struct *td;
 
 	TDQ_LOCK_ASSERT(tdq, MA_OWNED);
-	td = runq_choose(&tdq->realtime);
+	td = runq_choose(&tdq->realtime, except);
 	if (td != NULL) {
 		return (td);
 	}
-	td = runq_choose_from(&tdq->timeshare, tdq->ridx);
+	td = runq_choose_from(&tdq->timeshare, tdq->ridx, except);
 	if (td != NULL) {
 		return td;
 	}
-	td = runq_choose(&tdq->idle);
+	td = runq_choose(&tdq->idle, except);
 	if (td != NULL) {
+		BUG();
 		return td;
 	}
-	return NULL;
-}
-
-struct task_struct *sched_choose(struct rq *rq)
-{
-	struct task_struct *td;
-	struct ktz_tdq *tdq = TDQ(rq);
-
-	TDQ_LOCK_ASSERT(tdq, MA_OWNED);
-	td = tdq_choose(tdq);
-	if (td) {
-		tdq_runq_rem(tdq, td);
-		tdq->lowpri = td->ktz_prio;
-		return td;
-	}
-	//tdq->lowpri = PRI_MAX_IDLE;
-	tdq->lowpri = MAX_KTZ_PRIO;
 	return NULL;
 }
 
@@ -499,7 +483,7 @@ static void tdq_setlowpri(struct ktz_tdq *tdq, struct task_struct *ctd)
 	TDQ_LOCK_ASSERT(tdq, MA_OWNED);
 	if (ctd == NULL)
 		ctd = rq->curr;
-	td = tdq_choose(tdq);
+	td = tdq_choose(tdq, NULL);
 	if (td == NULL || td->ktz_prio > ctd->ktz_prio)
 		tdq->lowpri = ctd->ktz_prio;
 	else
@@ -523,6 +507,8 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 	 */
 	if (is_enqueued(td) && prio < td->ktz_prio) {
 		tdq_runq_rem(tdq, td);
+		/* Don't forget to remove the load as tdq_add will later inc. it .*/
+		tdq_load_rem(tdq, td);
 		td->ktz_prio = prio;
 		tdq_add(tdq, td, 0);
 		return;
@@ -589,6 +575,7 @@ static inline void print_tdq(struct ktz_tdq *tdq)
 	LOG("tdq %p\n", tdq);
 	LOG("idx : %d", tdq->idx);
 	LOG("ridx : %d", tdq->ridx);
+	LOG("load : %d", tdq->load);
 	LOG("Realtime runq :\n");
 	runq_print(&tdq->realtime);
 	LOG("Timeshare runq :\n");
@@ -647,6 +634,8 @@ static void enqueue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 	}
 	ktz_se->slice = 0;
 	tdq_add(tdq, p, 0);
+	//LOG("Enqueue %d", p->pid);
+	//print_loads();
 }
 
 static void dequeue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
@@ -664,6 +653,8 @@ static void dequeue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 	tdq_load_rem(tdq, p);
 	if (p->ktz_prio == tdq->lowpri)
 		tdq_setlowpri(tdq, NULL);
+	//LOG("Dequeue %d", p->pid);
+	//print_loads();
 }
 
 static void yield_task_ktz(struct rq *rq)
@@ -704,19 +695,22 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 {
 	struct ktz_tdq *tdq = TDQ(rq);
 	struct task_struct *next_task;
+	int this_cpu = smp_processor_id();
 
 	if (tdq->load) {
 		put_prev_task(rq, prev);
-		next_task = tdq_choose(tdq);
+		next_task = tdq_choose(tdq, NULL);
 		return next_task;
 	}
 	else {
 		/* Need load balancing. */
+		lockdep_unpin_lock(&rq->lock, cookie);
 		next_task = load_balance_ktz(rq);
+		lockdep_repin_lock(&rq->lock, cookie);
 		if (next_task)
-			enqueue_task_ktz(rq, next_task, 0);
-		return next_task;
-		return NULL;
+			return RETRY_TASK; /* Wait for the next pick. */
+		else
+			return NULL;
 	}
 }
 
@@ -822,6 +816,7 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 static inline int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
+	return 0; /* Overload first core. */
 	int ccpu;
 	int best_cpu = -1;
 	int min_load = INT_MAX;
@@ -849,15 +844,39 @@ static void migrate_task_rq_ktz(struct task_struct *p)
 {
 }
 
+static void detach_task(struct rq *src_rq, struct task_struct *p, int dest_cpu)
+{
+	p->on_rq = TASK_ON_RQ_MIGRATING;
+	deactivate_task(src_rq, p, 0);
+	set_task_cpu(p, dest_cpu);
+}
+
+static void attach_task(struct rq *rq, struct task_struct *p)
+{
+	lockdep_assert_held(&rq->lock);
+
+	BUG_ON(task_rq(p) != rq);
+	activate_task(rq, p, 0);
+	p->on_rq = TASK_ON_RQ_QUEUED;
+	check_preempt_curr(rq, p, 0);
+}
+
 static struct task_struct *load_balance_ktz(struct rq *this_rq)
 {
-#ifdef CONFIG_SMP
 	int rcpu;
 	int best_cpu = -1;
 	int max_load = 0;
+	unsigned long flags;
+	int this_cpu;
 	struct rq *target_rq;
 	struct ktz_tdq *target_tdq;
 	struct task_struct *stolen;
+	struct rq *new_rq;
+
+	this_cpu = smp_processor_id();
+
+	LOG("[%d] Is idle, current load :", this_cpu);
+	print_loads();
 
 	rcu_read_lock();
 	/* Try to find the cpu having max load. Naive approach for now. */
@@ -865,7 +884,10 @@ static struct task_struct *load_balance_ktz(struct rq *this_rq)
 		struct rq *rem_rq = cpu_rq(rcpu);
 		struct ktz_tdq *rem_tdq = TDQ(rem_rq);
 
-		if (rem_tdq->load > max_load) {
+		if (rcpu == this_cpu)
+			continue;
+
+		if (rem_tdq->load > 1 && rem_tdq->load > max_load) {
 			max_load = rem_tdq->load;
 			best_cpu = rcpu;
 		}
@@ -874,24 +896,57 @@ static struct task_struct *load_balance_ktz(struct rq *this_rq)
 
 	if (!max_load) {
 		/* Cannot steal, abort. */
-		LOG("[%d] Cannot steal", smp_processor_id());
+		LOG("[%d] Cannot steal", this_cpu);
+		//print_loads();
 		return NULL;
 	}
 
-	LOG("[%d] Steal from %d", smp_processor_id(), best_cpu);
-	/* Grab a task from this cpu. */
-	target_rq = cpu_rq(rcpu);
+	LOG("[%d] Steal from %d", this_cpu, best_cpu);
+	target_rq = cpu_rq(best_cpu);
 	target_tdq = TDQ(target_rq);
-	raw_spin_lock(&target_rq->lock);
-	stolen = tdq_choose(target_tdq);
-	LOG("[%d] Stole %d from %d", smp_processor_id(), stolen->pid, best_cpu);
+
+	/* Take a task from the target cpu. */
+	raw_spin_lock_irqsave(&target_rq->lock, flags);
+	LOG("Rq locked, curr of %d = %d, tdq : ", best_cpu, target_rq->curr->pid);
+	print_tdq(target_tdq);
+
+	if (target_tdq->load <= 1) {
+		raw_spin_unlock(&target_rq->lock);
+		local_irq_restore(flags);
+		return NULL;
+	}
+
+	stolen = tdq_choose(target_tdq, target_rq->curr);
 	BUG_ON(stolen == target_rq->curr);
-	dequeue_task_ktz(target_rq, stolen, 0);
+	if (stolen == NULL) {
+		/*LOG("Stolen == NULL, tdq of target:");
+		print_tdq(target_tdq);
+		BUG();*/
+		raw_spin_unlock(&target_rq->lock);
+		local_irq_restore(flags);
+		return NULL;
+	}
+
+	if (!cpumask_test_cpu(this_cpu, tsk_cpus_allowed(stolen))) {
+		LOG("[%d] Stolen task is not allowed.", this_cpu);
+		raw_spin_unlock(&target_rq->lock);
+		local_irq_restore(flags);
+		return NULL;
+	}
+
+	LOG("[%d] Will steal %d", this_cpu, stolen->pid);
+
+	detach_task(target_rq, stolen, this_cpu);
+
 	raw_spin_unlock(&target_rq->lock);
 
+	attach_task(this_rq, stolen);
+
+	local_irq_restore(flags);
+	
+	LOG("[%d] Stole %d from %d, new load:", this_cpu, stolen->pid, best_cpu);
+	print_loads();
 	return stolen;
-#endif
-	return NULL;
 }
 
 #endif

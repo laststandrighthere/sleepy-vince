@@ -90,19 +90,9 @@ static inline struct task_struct *ktz_task_of(struct sched_ktz_entity *ktz_se)
 /*
  * Find the highest priority process on the run queue.
  */
-struct task_struct *runq_choose(struct runq *rq)
+struct task_struct *runq_choose(struct runq *rq, struct task_struct *except)
 {
-	struct list_head *rqh;
-	struct sched_ktz_entity *first;
-	int pri;
-
-	while ((pri = runq_findbit(rq)) != -1) {
-		rqh = &rq->queues[pri];
-		first = list_first_entry(rqh, struct sched_ktz_entity, runq);
-		return ktz_task_of(first);
-	}
-
-	return (NULL);
+	return runq_choose_from(rq, 0, except);
 }
 
 static int runq_findbit_from(struct runq *q, int idx)
@@ -120,16 +110,31 @@ static int runq_findbit_from(struct runq *q, int idx)
 	}
 }
 
-struct task_struct *runq_choose_from(struct runq *rq, int idx)
+struct task_struct *runq_choose_from(struct runq *rq, int idx, struct task_struct *except)
 {
 	struct list_head *rqh;
+	struct sched_ktz_entity  *tmp;
 	struct sched_ktz_entity *first;
 	int pri;
 
+retry:
 	if ((pri = runq_findbit_from(rq, idx)) != -1) {
 		rqh = &rq->queues[pri];
-		first = list_first_entry(rqh, struct sched_ktz_entity, runq);
-		return ktz_task_of(first);
+		if (!except) {
+			first = list_first_entry(rqh, struct sched_ktz_entity, runq);
+			return ktz_task_of(first);
+		}
+		else {
+			list_for_each_entry(tmp, rqh, runq) {
+				struct task_struct *t = ktz_task_of(tmp);
+				if (t != except)
+					return t;
+			}
+			idx ++;
+			if (idx >= KTZ_RUNQ_BITMAP_SIZE)
+				return NULL;
+			goto retry;
+		}
 	}
 
 	return (NULL);
