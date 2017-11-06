@@ -816,7 +816,6 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 static inline int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
-	return 0; /* Overload first core. */
 	int ccpu;
 	int best_cpu = -1;
 	int min_load = INT_MAX;
