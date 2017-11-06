@@ -918,6 +918,7 @@ static struct task_struct *load_balance_ktz(struct rq *this_rq)
 
 	stolen = tdq_choose(target_tdq, target_rq->curr);
 	BUG_ON(stolen == target_rq->curr);
+	BUG_ON(task_running(target_rq, stolen));
 	if (stolen == NULL) {
 		/*LOG("Stolen == NULL, tdq of target:");
 		print_tdq(target_tdq);
