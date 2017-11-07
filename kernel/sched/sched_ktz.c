@@ -135,6 +135,11 @@ void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 		balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
 }
 
+static inline struct task_struct *ktz_task_of(struct sched_ktz_entity *ktz_se)
+{
+	return container_of(ktz_se, struct task_struct, ktz_se);
+}
+
 static void pctcpu_update(struct sched_ktz_entity *ts, bool run)
 {
 	int t = jiffies;
@@ -640,24 +645,80 @@ static void tdq_unlock_pair(struct ktz_tdq *high, int hflags, struct ktz_tdq *lo
 	}
 }
 
-static struct task_struct * tdq_steal(struct ktz_tdq *tdq, int cpu)
+static bool can_migrate(struct task_struct *p, int to_cpu)
 {
-	/*struct task_struct *td;
+	BUG_ON(p == NULL);
 
-	TDQ_LOCK_ASSERT(tdq, MA_OWNED);
-	if ((td = runq_steal(&tdq->tdq_realtime, cpu)) != NULL)
-		return (td);
-	if ((td = runq_steal_from(&tdq->tdq_timeshare,
-	    cpu, tdq->tdq_ridx)) != NULL)
-		return (td);
-	return (runq_steal(&tdq->tdq_idle, cpu));*/
+	/* Can't migrate running task. */
+	if (task_running(task_rq(p), p))
+		return false;
 
-	struct task_struct *stolen;
-	stolen = tdq_choose(tdq, RQ(tdq)->curr);
-	if (stolen && !cpumask_test_cpu(cpu, tsk_cpus_allowed(stolen)))
-		return NULL;
-	else
-		return stolen;
+	if (task_rq(p)->curr == p)
+		BUG();
+
+	/* Can't migrate if dest is not allowed. */
+	if (!cpumask_test_cpu(to_cpu, tsk_cpus_allowed(p)))
+		return false;
+
+	if (TDQ(task_rq(p))->load <= 1)
+		BUG();
+
+	/* Other filters might be added in the future. */
+
+	return true;
+}
+
+static struct task_struct *runq_steal_from(struct runq *rq, int dest_cpu, int start)
+{
+	unsigned long *status;
+	struct task_struct *first;
+	int bit;
+	int offset;
+	int size = KTZ_RUNQ_BITMAP_SIZE;
+
+	status = rq->status;
+	offset = start;
+	first = NULL;
+
+again:
+	while ((bit = find_next_bit(status, size, offset)) != size) {
+		struct list_head *queue = &rq->queues[bit];
+		struct sched_ktz_entity *tmp;
+		struct task_struct *tmp_task;
+		list_for_each_entry(tmp, queue, runq) {
+			tmp_task = ktz_task_of(tmp);
+			if (first && can_migrate(tmp_task, dest_cpu))
+				return tmp_task;
+			first = tmp_task;
+		}
+		offset = bit + 1;
+	}
+	if (start != 0) {
+		offset = 0;
+		start = 0;
+		goto again;
+	}
+	if (first && can_migrate(first, dest_cpu))
+		return first;
+	return NULL;
+}
+
+static struct task_struct *runq_steal(struct runq *rq, int dest_cpu)
+{
+	return runq_steal_from(rq, dest_cpu, 0);
+}
+
+static struct task_struct *tdq_steal(struct ktz_tdq *tdq, int cpu)
+{
+	struct task_struct *td;
+
+	if ((td = runq_steal(&tdq->realtime, cpu)) != NULL)
+		return (td);
+	if ((td = runq_steal_from(&tdq->timeshare, cpu, tdq->ridx)) != NULL)
+		return (td);
+	if ((td = runq_steal(&tdq->idle, cpu)) != NULL)
+		BUG();
+	return NULL;
 }
 
 /*
@@ -766,11 +827,6 @@ static void sched_balance(void)
 
 static struct task_struct *load_balance_ktz(struct rq *this_rq);
 
-static inline struct task_struct *ktz_task_of(struct sched_ktz_entity *ktz_se)
-{
-	return container_of(ktz_se, struct task_struct, ktz_se);
-}
-
 static inline void print_stats(struct task_struct *p)
 {
 	struct sched_ktz_entity *kse = KTZ_SE(p);
@@ -868,8 +924,6 @@ static void enqueue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 	}
 	ktz_se->slice = 0;
 	tdq_add(tdq, p, 0);
-	//LOG("Enqueue %d", p->pid);
-	//print_loads();
 }
 
 static void dequeue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
@@ -887,8 +941,6 @@ static void dequeue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 	tdq_load_rem(tdq, p);
 	if (p->ktz_prio == tdq->lowpri)
 		tdq_setlowpri(tdq, NULL);
-	//LOG("Dequeue %d", p->pid);
-	//print_loads();
 }
 
 static void yield_task_ktz(struct rq *rq)
