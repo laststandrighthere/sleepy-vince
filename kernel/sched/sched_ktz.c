@@ -989,14 +989,7 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 		return next_task;
 	}
 	else {
-		/* Need load balancing. */
-		lockdep_unpin_lock(&rq->lock, cookie);
-		next_task = load_balance_ktz(rq);
-		lockdep_repin_lock(&rq->lock, cookie);
-		if (next_task)
-			return RETRY_TASK; /* Wait for the next pick. */
-		else
-			return NULL;
+		return NULL;
 	}
 }
 
@@ -1026,11 +1019,11 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (smp_processor_id() == BALANCING_CPU) {
 		if (balance_ticks && --balance_ticks == 0) {
-			LOG("Trigger load balancing. Before :");
-			print_loads();
+			/*LOG("Trigger load balancing. Before :");
+			print_loads();*/
 			sched_balance();
-			LOG("After LB :");
-			print_loads();
+			/*LOG("After LB :");
+			print_loads();*/
 		}
 	}
 
