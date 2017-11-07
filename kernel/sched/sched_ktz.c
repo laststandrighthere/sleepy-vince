@@ -653,7 +653,6 @@ static struct task_struct * tdq_steal(struct ktz_tdq *tdq, int cpu)
 	return (runq_steal(&tdq->tdq_idle, cpu));*/
 
 	struct task_struct *stolen;
-	LOG("Before choose");
 	stolen = tdq_choose(tdq, RQ(tdq)->curr);
 	if (stolen && !cpumask_test_cpu(cpu, tsk_cpus_allowed(stolen)))
 		return NULL;
@@ -672,13 +671,10 @@ static int tdq_move(struct ktz_tdq *from, struct ktz_tdq *to)
 
 	tdq = from;
 	cpu = RQ(to)->cpu;
-	LOG("tdq_move : try to steal.");
 	td = tdq_steal(tdq, cpu);
 	if (td == NULL) {
-		LOG("Stolen == NULL");
 		return 0;
 	}
-	LOG("%d steals %d from %d", RQ(to)->cpu, td->pid, RQ(from)->cpu);
 	detach_task(RQ(from), td, cpu);
 	attach_task(RQ(to), td);
 	return 1;
@@ -694,7 +690,6 @@ static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 	int hflags, lflags;
 
 	tdq_lock_pair(high, &hflags, low, &lflags);
-	LOG("sched_balance_pair : pair locked");
 	moved = 0;
 	/*
 	 * Determine what the imbalance is and then adjust that to how many
@@ -711,8 +706,6 @@ static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 			ipi_cpu(cpu, IPI_PREEMPT);*/
 	}
 	tdq_unlock_pair(high, hflags, low, lflags);
-	LOG("sched_balance_pair : pair unlocked");
-	LOG("sched_balance_pair : return %d", moved);
 	return moved;
 }
 
@@ -726,7 +719,6 @@ static void sched_balance_group(struct sched_group *sg)
 	cpumask_setall(&hmask);
 	for (;;) {
 		high = sched_highest(NULL, &hmask, 1);
-		LOG("high = %d", high);
 		/* Stop if there is no more CPU with transferrable threads. */
 		if (high == -1)
 			break;
@@ -739,7 +731,6 @@ static void sched_balance_group(struct sched_group *sg)
 		anylow = 1;
 nextlow:
 		low = sched_lowest(NULL, &lmask, -1, tdq_high->load - 1, high);
-		LOG("low = %d", low);
 		/* Stop if we looked well and found no less loaded CPU. */
 		if (anylow && low == -1)
 			break;
@@ -769,7 +760,6 @@ static void sched_balance(void)
 	struct rq *rq = this_rq();
 	balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
 	raw_spin_unlock(&rq->lock);
-	LOG("Trigger balancing.");
 	sched_balance_group(NULL);
 	raw_spin_lock(&rq->lock);
 }
@@ -983,8 +973,13 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 	tdq->switchcnt = tdq->load;
 
 	if (smp_processor_id() == BALANCING_CPU) {
-		if (balance_ticks && --balance_ticks == 0)
+		if (balance_ticks && --balance_ticks == 0) {
+			LOG("Trigger load balancing. Before :");
+			print_loads();
 			sched_balance();
+			LOG("After LB :");
+			print_loads();
+		}
 	}
 
 	/*
@@ -1065,7 +1060,6 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 static inline int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
-	return 0;
 	int ccpu;
 	int best_cpu = -1;
 	int min_load = INT_MAX;
