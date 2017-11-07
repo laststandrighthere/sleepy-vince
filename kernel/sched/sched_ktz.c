@@ -76,6 +76,10 @@
 
 /* Load balancing stuff */
 #define THREAD_CAN_MIGRATE(td)	false /*TODO*/
+#define BALANCING_CPU		0 /* CPU 0 is responsible for load balancing. */
+static int balance_ticks;
+static int balance_interval = 128;	/* Default set in sched_initticks(). */
+
 
 /* Globals */
 static int tickincr = 1 << SCHED_TICK_SHIFT;	/* 1 Should be correct. */
@@ -96,7 +100,11 @@ unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 #define TDQ(rq)		(&(rq)->ktz)
 #define RQ(tdq)		(container_of(tdq, struct rq, ktz))
 
-//#define LOG(...) 	do{}while(0)
+static uint32_t sched_random(void)
+{
+	/* http://dilbert.com/strip/2001-10-25 */
+	return balance_interval - 1;
+}
 
 void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 {
@@ -122,6 +130,9 @@ void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 	PRINT(SCHED_PRI_MIN);
 	PRINT(SCHED_PRI_MAX);
 	PRINT(SCHED_PRI_RANGE);
+
+	if (smp_processor_id() == BALANCING_CPU)
+		balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
 }
 
 static void pctcpu_update(struct sched_ktz_entity *ts, bool run)
@@ -490,6 +501,24 @@ static void tdq_setlowpri(struct ktz_tdq *tdq, struct task_struct *ctd)
 		tdq->lowpri = td->ktz_prio;
 }
 
+static void detach_task(struct rq *src_rq, struct task_struct *p, int dest_cpu)
+{
+	p->on_rq = TASK_ON_RQ_MIGRATING;
+	deactivate_task(src_rq, p, 0);
+	set_task_cpu(p, dest_cpu);
+}
+
+static void attach_task(struct rq *rq, struct task_struct *p)
+{
+	lockdep_assert_held(&rq->lock);
+
+	BUG_ON(task_rq(p) != rq);
+	activate_task(rq, p, 0);
+	p->on_rq = TASK_ON_RQ_QUEUED;
+	check_preempt_curr(rq, p, 0);
+}
+
+
 static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, int prio)
 {
 	struct rq *rq = RQ(tdq);
@@ -528,6 +557,221 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 		return;
 	}
 	td->ktz_prio = prio;
+}
+
+static inline int sched_highest(struct sched_group *sg, struct cpumask *mask, int minload)
+{
+	int ccpu;
+	int highest_cpu = -1;
+	int max_load = -1;
+
+	rcu_read_lock();
+	for_each_cpu(ccpu, mask) {
+		struct rq *rq = cpu_rq(ccpu);
+		struct ktz_tdq *tdq = TDQ(rq);
+
+		if (minload < tdq->load && tdq->load > max_load) {
+			max_load = tdq->load;
+			highest_cpu = ccpu;
+		}
+	}
+	rcu_read_unlock();
+	return highest_cpu;
+}
+
+static inline int sched_lowest(struct sched_group *sg, struct cpumask *mask, int pri, int maxload, int prefer)
+{
+	int ccpu;
+	int lowest_cpu = -1;
+	int min_load = INT_MAX;
+
+	rcu_read_lock();
+	for_each_cpu(ccpu, mask) {
+		struct rq *rq = cpu_rq(ccpu);
+		struct ktz_tdq *tdq = TDQ(rq);
+
+		if (pri != -1 && tdq->lowpri < pri)
+			continue;
+
+		if (tdq->load < min_load && tdq->load < maxload) {
+			min_load = tdq->load;
+			lowest_cpu = ccpu;
+		}
+	}
+	rcu_read_unlock();
+	return lowest_cpu;
+}
+
+static void tdq_lock_pair(struct ktz_tdq *high, int *hflags, struct ktz_tdq *low, int *lflags)
+{
+	struct rq *rq_high = RQ(high);
+	struct rq *rq_low = RQ(low);
+
+	BUG_ON(rq_high == rq_low);
+
+	if (rq_high < rq_low) {
+		raw_spin_lock_irqsave(&rq_high->lock, *hflags);	
+		raw_spin_lock_irqsave(&rq_low->lock, *lflags);	
+	}
+	else {
+		raw_spin_lock_irqsave(&rq_low->lock, *lflags);	
+		raw_spin_lock_irqsave(&rq_high->lock, *hflags);	
+	}
+}
+
+static void tdq_unlock_pair(struct ktz_tdq *high, int hflags, struct ktz_tdq *low, int lflags)
+{
+	struct rq *rq_high = RQ(high);
+	struct rq *rq_low = RQ(low);
+
+	BUG_ON(rq_high == rq_low);
+
+	if (rq_high < rq_low) {
+		raw_spin_unlock(&rq_high->lock);	
+		raw_spin_unlock(&rq_low->lock);	
+		local_irq_restore(hflags);
+		local_irq_restore(lflags);
+	}
+	else {
+		raw_spin_unlock(&rq_low->lock);	
+		raw_spin_unlock(&rq_high->lock);	
+		local_irq_restore(lflags);
+		local_irq_restore(hflags);
+	}
+}
+
+static struct task_struct * tdq_steal(struct ktz_tdq *tdq, int cpu)
+{
+	/*struct task_struct *td;
+
+	TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	if ((td = runq_steal(&tdq->tdq_realtime, cpu)) != NULL)
+		return (td);
+	if ((td = runq_steal_from(&tdq->tdq_timeshare,
+	    cpu, tdq->tdq_ridx)) != NULL)
+		return (td);
+	return (runq_steal(&tdq->tdq_idle, cpu));*/
+
+	struct task_struct *stolen;
+	LOG("Before choose");
+	stolen = tdq_choose(tdq, RQ(tdq)->curr);
+	if (stolen && !cpumask_test_cpu(cpu, tsk_cpus_allowed(stolen)))
+		return NULL;
+	else
+		return stolen;
+}
+
+/*
+ * Move a thread from one thread queue to another.
+ */
+static int tdq_move(struct ktz_tdq *from, struct ktz_tdq *to)
+{
+	struct task_struct *td;
+	struct ktz_tdq *tdq;
+	int cpu;
+
+	tdq = from;
+	cpu = RQ(to)->cpu;
+	LOG("tdq_move : try to steal.");
+	td = tdq_steal(tdq, cpu);
+	if (td == NULL) {
+		LOG("Stolen == NULL");
+		return 0;
+	}
+	LOG("%d steals %d from %d", RQ(to)->cpu, td->pid, RQ(from)->cpu);
+	detach_task(RQ(from), td, cpu);
+	attach_task(RQ(to), td);
+	return 1;
+}
+
+/*
+ * Transfer load between two imbalanced thread queues.
+ */
+static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
+{
+	int moved;
+	int cpu;
+	int hflags, lflags;
+
+	tdq_lock_pair(high, &hflags, low, &lflags);
+	LOG("sched_balance_pair : pair locked");
+	moved = 0;
+	/*
+	 * Determine what the imbalance is and then adjust that to how many
+	 * threads we actually have to give up (transferable).
+	 */
+	if (/*high->tdq_transferable != 0 && */ high->load > low->load &&
+	    (moved = tdq_move(high, low)) > 0) {
+		/*
+		 * In case the target isn't the current cpu IPI it to force a
+		 * reschedule with the new workload.
+		 */
+		/*cpu = TDQ_ID(low);
+		if (cpu != PCPU_GET(cpuid))
+			ipi_cpu(cpu, IPI_PREEMPT);*/
+	}
+	tdq_unlock_pair(high, hflags, low, lflags);
+	LOG("sched_balance_pair : pair unlocked");
+	LOG("sched_balance_pair : return %d", moved);
+	return moved;
+}
+
+static void sched_balance_group(struct sched_group *sg)
+{
+	struct cpumask hmask, lmask; 
+	int high, low, anylow;
+	struct ktz_tdq *tdq_high;
+	struct ktz_tdq *tdq_low;
+
+	cpumask_setall(&hmask);
+	for (;;) {
+		high = sched_highest(NULL, &hmask, 1);
+		LOG("high = %d", high);
+		/* Stop if there is no more CPU with transferrable threads. */
+		if (high == -1)
+			break;
+		tdq_high = TDQ(cpu_rq(high));
+		cpumask_clear_cpu(high, &hmask);
+		cpumask_copy(&lmask, &hmask);
+		/* Stop if there is no more CPU left for low. */
+		if (cpumask_empty(&lmask))
+			break;
+		anylow = 1;
+nextlow:
+		low = sched_lowest(NULL, &lmask, -1, tdq_high->load - 1, high);
+		LOG("low = %d", low);
+		/* Stop if we looked well and found no less loaded CPU. */
+		if (anylow && low == -1)
+			break;
+		/* Go to next high if we found no less loaded CPU. */
+		if (low == -1)
+			continue;
+		tdq_low = TDQ(cpu_rq(low));
+		/* Transfer thread from high to low. */
+		if (sched_balance_pair(tdq_high, tdq_low)) {
+			/* CPU that got thread can no longer be a donor. */
+			cpumask_clear_cpu(low, &hmask);
+		} else {
+			/*
+			 * If failed, then there is no threads on high
+			 * that can run on this low. Drop low from low
+			 * mask and look for different one.
+			 */
+			cpumask_clear_cpu(low, &lmask);
+			anylow = 0;
+			goto nextlow;
+		}
+	}
+}
+
+static void sched_balance(void)
+{
+	struct rq *rq = this_rq();
+	balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
+	raw_spin_unlock(&rq->lock);
+	LOG("Trigger balancing.");
+	sched_balance_group(NULL);
+	raw_spin_lock(&rq->lock);
 }
 
 static struct task_struct *load_balance_ktz(struct rq *this_rq);
@@ -738,6 +982,11 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 	tdq->oldswitchcnt = tdq->switchcnt;
 	tdq->switchcnt = tdq->load;
 
+	if (smp_processor_id() == BALANCING_CPU) {
+		if (balance_ticks && --balance_ticks == 0)
+			sched_balance();
+	}
+
 	/*
 	 * Advance the insert index once for each tick to ensure that all
 	 * threads get a chance to run.
@@ -816,6 +1065,7 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 static inline int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
+	return 0;
 	int ccpu;
 	int best_cpu = -1;
 	int min_load = INT_MAX;
@@ -841,23 +1091,6 @@ static inline int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag
 
 static void migrate_task_rq_ktz(struct task_struct *p)
 {
-}
-
-static void detach_task(struct rq *src_rq, struct task_struct *p, int dest_cpu)
-{
-	p->on_rq = TASK_ON_RQ_MIGRATING;
-	deactivate_task(src_rq, p, 0);
-	set_task_cpu(p, dest_cpu);
-}
-
-static void attach_task(struct rq *rq, struct task_struct *p)
-{
-	lockdep_assert_held(&rq->lock);
-
-	BUG_ON(task_rq(p) != rq);
-	activate_task(rq, p, 0);
-	p->on_rq = TASK_ON_RQ_QUEUED;
-	check_preempt_curr(rq, p, 0);
 }
 
 static struct task_struct *load_balance_ktz(struct rq *this_rq)
