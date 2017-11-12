@@ -633,14 +633,14 @@ static void tdq_unlock_pair(struct ktz_tdq *high, int hflags, struct ktz_tdq *lo
 
 	if (rq_high < rq_low) {
 		raw_spin_unlock(&rq_high->lock);	
-		raw_spin_unlock(&rq_low->lock);	
 		local_irq_restore(hflags);
+		raw_spin_unlock(&rq_low->lock);	
 		local_irq_restore(lflags);
 	}
 	else {
 		raw_spin_unlock(&rq_low->lock);	
-		raw_spin_unlock(&rq_high->lock);	
 		local_irq_restore(lflags);
+		raw_spin_unlock(&rq_high->lock);	
 		local_irq_restore(hflags);
 	}
 }
@@ -756,15 +756,17 @@ static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 	 * Determine what the imbalance is and then adjust that to how many
 	 * threads we actually have to give up (transferable).
 	 */
-	if (/*high->tdq_transferable != 0 && */ high->load > low->load &&
-	    (moved = tdq_move(high, low)) > 0) {
-		/*
-		 * In case the target isn't the current cpu IPI it to force a
-		 * reschedule with the new workload.
-		 */
-		/*cpu = TDQ_ID(low);
-		if (cpu != PCPU_GET(cpuid))
-			ipi_cpu(cpu, IPI_PREEMPT);*/
+	if (high->load > low->load) {
+		moved = tdq_move(high, low);
+		if (moved) {
+			/*
+			 * In case the target isn't the current cpu IPI it to force a
+			 * reschedule with the new workload.
+			 */
+			/*cpu = TDQ_ID(low);
+			if (cpu != PCPU_GET(cpuid))
+				ipi_cpu(cpu, IPI_PREEMPT);*/
+		}
 	}
 	tdq_unlock_pair(high, hflags, low, lflags);
 	return moved;
@@ -816,13 +818,57 @@ nextlow:
 	}
 }
 
-static void sched_balance(void)
+static void sched_balance(struct rq *rq)
 {
-	struct rq *rq = this_rq();
+	//struct rq *rq = this_rq();
 	balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
+
 	raw_spin_unlock(&rq->lock);
 	sched_balance_group(NULL);
 	raw_spin_lock(&rq->lock);
+}
+
+/*
+ * This cpu is idle, try to steal some tasks.
+ */ 
+static int tdq_idled(struct ktz_tdq *this_tdq)
+{
+	int this_cpu, victim_cpu, thresh, moved, vflags, tflags;
+	struct ktz_tdq *victim_tdq;
+	struct cpumask cpus;
+
+	thresh = 2;
+	this_cpu = smp_processor_id();
+	cpumask_setall(&cpus);
+	/* Don't steal from oursleves. */
+	cpumask_clear_cpu(this_cpu, &cpus);
+
+	while (!cpumask_empty(&cpus)) {
+		victim_cpu = sched_highest(NULL, &cpus, thresh);
+		if (victim_cpu == -1)
+			break;
+		victim_tdq = TDQ(cpu_rq(victim_cpu));
+
+		tdq_lock_pair(this_tdq, &tflags, victim_tdq, &vflags);
+		/* Make sure the load of the victim still permits us to steal. */
+		if (victim_tdq->load < thresh) {
+			tdq_unlock_pair(this_tdq, tflags, victim_tdq, vflags);
+			continue;
+		}
+		moved = tdq_move(victim_tdq, this_tdq);
+		tdq_unlock_pair(this_tdq, tflags, victim_tdq, vflags);
+
+		/* Steal was successful. */
+		if (moved) {
+			return 1;
+		}
+
+		/* Remove the victim for next iterations. */
+		cpumask_clear_cpu(victim_cpu, &cpus);
+	}
+
+	/* Failed to steal. */
+	return 0;
 }
 
 static struct task_struct *load_balance_ktz(struct rq *this_rq);
@@ -982,14 +1028,27 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 	struct ktz_tdq *tdq = TDQ(rq);
 	struct task_struct *next_task;
 	int this_cpu = smp_processor_id();
+	int steal;
 
+redo:
 	if (tdq->load) {
 		put_prev_task(rq, prev);
 		next_task = tdq_choose(tdq, NULL);
 		return next_task;
 	}
 	else {
-		return NULL;
+		lockdep_unpin_lock(&rq->lock, cookie);
+		raw_spin_unlock(&rq->lock);
+		steal = tdq_idled(tdq);
+		raw_spin_lock(&rq->lock);
+		lockdep_repin_lock(&rq->lock, cookie);
+		if (steal) {
+			LOG("[%d] Successfully stole a task.", this_cpu);
+			goto redo;
+		}
+		else {
+			return NULL;	
+		}
 	}
 }
 
@@ -1019,11 +1078,7 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (smp_processor_id() == BALANCING_CPU) {
 		if (balance_ticks && --balance_ticks == 0) {
-			/*LOG("Trigger load balancing. Before :");
-			print_loads();*/
-			sched_balance();
-			/*LOG("After LB :");
-			print_loads();*/
+			sched_balance(rq);
 		}
 	}
 
