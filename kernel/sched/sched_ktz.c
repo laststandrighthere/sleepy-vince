@@ -1030,7 +1030,6 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 	int this_cpu = smp_processor_id();
 	int steal;
 
-redo:
 	if (tdq->load) {
 		put_prev_task(rq, prev);
 		next_task = tdq_choose(tdq, NULL);
@@ -1043,8 +1042,7 @@ redo:
 		raw_spin_lock(&rq->lock);
 		lockdep_repin_lock(&rq->lock, cookie);
 		if (steal) {
-			LOG("[%d] Successfully stole a task.", this_cpu);
-			goto redo;
+			return RETRY_TASK;
 		}
 		else {
 			return NULL;	
