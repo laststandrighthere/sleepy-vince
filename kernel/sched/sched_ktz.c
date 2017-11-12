@@ -746,30 +746,37 @@ static int tdq_move(struct ktz_tdq *from, struct ktz_tdq *to)
  */
 static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 {
-	int moved;
-	int cpu;
-	int hflags, lflags;
+	int flags, dest_cpu;
+	struct task_struct *stolen;
+	struct rq *high_rq = RQ(high);
+	struct rq *low_rq = RQ(low);
 
-	tdq_lock_pair(high, &hflags, low, &lflags);
-	moved = 0;
-	/*
-	 * Determine what the imbalance is and then adjust that to how many
-	 * threads we actually have to give up (transferable).
-	 */
-	if (high->load > low->load) {
-		moved = tdq_move(high, low);
-		if (moved) {
-			/*
-			 * In case the target isn't the current cpu IPI it to force a
-			 * reschedule with the new workload.
-			 */
-			/*cpu = TDQ_ID(low);
-			if (cpu != PCPU_GET(cpuid))
-				ipi_cpu(cpu, IPI_PREEMPT);*/
-		}
+
+	/* We will move a task from high to low. */
+	dest_cpu = RQ(low)->cpu;
+
+	raw_spin_lock_irqsave(&high_rq->lock, flags);
+
+	/* Try to steal a task. */
+	stolen = tdq_steal(high, dest_cpu);
+	if (stolen) {
+		detach_task(high_rq, stolen, dest_cpu);
 	}
-	tdq_unlock_pair(high, hflags, low, lflags);
-	return moved;
+
+	raw_spin_unlock(&high_rq->lock);
+	local_irq_restore(flags);
+
+	/* Attach the stolen task at the destination if needed. */
+	if (stolen) {
+		raw_spin_lock_irqsave(&low_rq->lock, flags);
+		attach_task(low_rq, stolen);
+		raw_spin_unlock(&low_rq->lock);
+		local_irq_restore(flags);
+		return 1;
+	}
+	else {
+		return 0;
+	}
 }
 
 static void sched_balance_group(struct sched_group *sg)
@@ -855,6 +862,7 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 			tdq_unlock_pair(this_tdq, tflags, victim_tdq, vflags);
 			continue;
 		}
+		/* TODO : manually inline tdq_move to avoid pair locking. */
 		moved = tdq_move(victim_tdq, this_tdq);
 		tdq_unlock_pair(this_tdq, tflags, victim_tdq, vflags);
 
@@ -1036,7 +1044,8 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 		return next_task;
 	}
 	else {
-		lockdep_unpin_lock(&rq->lock, cookie);
+		return NULL;
+		/*lockdep_unpin_lock(&rq->lock, cookie);
 		raw_spin_unlock(&rq->lock);
 		steal = tdq_idled(tdq);
 		raw_spin_lock(&rq->lock);
@@ -1046,7 +1055,7 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 		}
 		else {
 			return NULL;	
-		}
+		}*/
 	}
 }
 
@@ -1076,7 +1085,9 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (smp_processor_id() == BALANCING_CPU) {
 		if (balance_ticks && --balance_ticks == 0) {
+			preempt_disable();
 			sched_balance(rq);
+			preempt_enable();
 		}
 	}
 
