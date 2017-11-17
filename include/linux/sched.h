@@ -2365,6 +2365,26 @@ static inline bool cpupri_check_rt(void)
 #define cpu_relax_yield() cpu_relax()
 #endif
 
+static inline u32 sched_get_wake_up_idle(struct task_struct *p)
+{
+	u32 enabled = p->flags & PF_WAKE_UP_IDLE;
+
+	return !!enabled;
+}
+
+static inline int sched_set_wake_up_idle(struct task_struct *p,
+						int wake_up_idle)
+{
+	int enable = !!wake_up_idle;
+
+	if (enable)
+		p->flags |= PF_WAKE_UP_IDLE;
+	else
+		p->flags &= ~PF_WAKE_UP_IDLE;
+
+	return 0;
+}
+
 static inline void set_wake_up_idle(bool enabled)
 {
 	if (enabled)
