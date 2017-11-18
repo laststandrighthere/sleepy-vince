@@ -79,6 +79,7 @@
 #define BALANCING_CPU		0 /* CPU 0 is responsible for load balancing. */
 static int balance_ticks;
 static int balance_interval = 128;	/* Default set in sched_initticks(). */
+unsigned int idle_stealing_cooldown = 500000UL;
 
 
 /* Globals */
@@ -95,7 +96,7 @@ unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 
 /* Helper macros / defines. */
 #define LOG(...) 	printk_deferred(__VA_ARGS__)
-#define LOG(...) 	do {} while (0)
+//#define LOG(...) 	do {} while (0)
 #define KTZ_SE(p)	(&(p)->ktz_se)
 #define PRINT(name)	printk_deferred(#name "\t\t = %d", name)
 #define TDQ(rq)		(&(rq)->ktz)
@@ -1040,11 +1041,18 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 	put_prev_task(rq, prev);
 redo:
 	if (tdq->load) {
+		rq->idle_stamp = 0;
 		next_task = tdq_choose(tdq, NULL);
 		return next_task;
 	}
 	else {
 		BUG_ON(again);
+
+		rq->idle_stamp = rq_clock(rq);
+		if (rq->avg_idle < idle_stealing_cooldown)
+			return NULL;
+
+		/* Steal something. */
 		lockdep_unpin_lock(&rq->lock, cookie);
 		raw_spin_unlock(&rq->lock);
 		steal = tdq_idled(tdq);
