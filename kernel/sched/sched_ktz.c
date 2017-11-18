@@ -572,7 +572,6 @@ static inline int sched_highest(struct sched_group *sg, struct cpumask *mask, in
 	int highest_cpu = -1;
 	int max_load = -1;
 
-	//rcu_read_lock();
 	for_each_cpu(ccpu, mask) {
 		struct rq *rq = cpu_rq(ccpu);
 		struct ktz_tdq *tdq = TDQ(rq);
@@ -582,7 +581,6 @@ static inline int sched_highest(struct sched_group *sg, struct cpumask *mask, in
 			highest_cpu = ccpu;
 		}
 	}
-	//rcu_read_unlock();
 	return highest_cpu;
 }
 
@@ -592,7 +590,6 @@ static inline int sched_lowest(struct sched_group *sg, struct cpumask *mask, int
 	int lowest_cpu = -1;
 	int min_load = INT_MAX;
 
-	//rcu_read_lock();
 	for_each_cpu(ccpu, mask) {
 		struct rq *rq = cpu_rq(ccpu);
 		struct ktz_tdq *tdq = TDQ(rq);
@@ -605,7 +602,6 @@ static inline int sched_lowest(struct sched_group *sg, struct cpumask *mask, int
 			lowest_cpu = ccpu;
 		}
 	}
-	//rcu_read_unlock();
 	return lowest_cpu;
 }
 
@@ -818,6 +814,7 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 	cpumask_setall(&cpus);
 	/* Don't steal from oursleves. */
 	cpumask_clear_cpu(this_cpu, &cpus);
+	(void) cpumask_and(&cpus, &cpus, cpu_online_mask);
 
 	while (!cpumask_empty(&cpus)) {
 		/* Maybe we received some task(s) during the stealing via
@@ -1179,17 +1176,12 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int wake_flags)
 {
-	//return smp_processor_id();
 	int ccpu;
 	int min_load = INT_MAX;
 	struct cpumask mask;
 
-	(void) cpumask_and(&mask, &p->cpus_allowed, cpu_active_mask);
-	(void) cpumask_and(&mask, &mask, cpu_possible_mask);
-	(void) cpumask_and(&mask, &mask, cpu_online_mask);
-	(void) cpumask_and(&mask, &mask, cpu_present_mask);
+	(void) cpumask_and(&mask, &p->cpus_allowed, cpu_online_mask);
 
-	//rcu_read_lock();
 	/* Try to find the cpu having min load. Naive approach for now. */
 	for_each_cpu(ccpu, &mask) {
 		struct rq *rq = cpu_rq(ccpu);
@@ -1200,7 +1192,6 @@ static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int w
 			cpu = ccpu;
 		}
 	}
-	//rcu_read_unlock();
 
 out:
 	return cpu;
@@ -1224,7 +1215,6 @@ static struct task_struct *load_balance_ktz(struct rq *this_rq)
 
 	this_cpu = smp_processor_id();
 
-	//rcu_read_lock();
 	/* Try to find the cpu having max load. Naive approach for now. */
 	for_each_cpu(rcpu, cpu_online_mask) {
 		struct rq *rem_rq = cpu_rq(rcpu);
@@ -1238,7 +1228,6 @@ static struct task_struct *load_balance_ktz(struct rq *this_rq)
 			best_cpu = rcpu;
 		}
 	}
-	//rcu_read_unlock();
 
 	if (!max_load) {
 		/* Cannot steal, abort. */
