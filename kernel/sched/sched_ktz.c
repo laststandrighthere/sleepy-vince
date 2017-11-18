@@ -95,6 +95,7 @@ unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 
 /* Helper macros / defines. */
 #define LOG(...) 	printk_deferred(__VA_ARGS__)
+#define LOG(...) 	do {} while (0)
 #define KTZ_SE(p)	(&(p)->ktz_se)
 #define PRINT(name)	printk_deferred(#name "\t\t = %d", name)
 #define TDQ(rq)		(&(rq)->ktz)
@@ -570,7 +571,6 @@ static inline int sched_highest(struct sched_group *sg, struct cpumask *mask, in
 	int highest_cpu = -1;
 	int max_load = -1;
 
-	LOG("[%d] sched_highest in", smp_processor_id());
 	//rcu_read_lock();
 	for_each_cpu(ccpu, mask) {
 		struct rq *rq = cpu_rq(ccpu);
@@ -582,7 +582,6 @@ static inline int sched_highest(struct sched_group *sg, struct cpumask *mask, in
 		}
 	}
 	//rcu_read_unlock();
-	LOG("[%d] sched_highest out", smp_processor_id());
 	return highest_cpu;
 }
 
@@ -617,15 +616,12 @@ static bool can_migrate(struct task_struct *p, int to_cpu)
 	if (task_running(task_rq(p), p))
 		return false;
 
-	if (task_rq(p)->curr == p)
-		BUG();
-
 	/* Can't migrate if dest is not allowed. */
 	if (!cpumask_test_cpu(to_cpu, tsk_cpus_allowed(p)))
 		return false;
 
 	if (TDQ(task_rq(p))->load <= 1)
-		BUG();
+		return false;
 
 	/* Other filters might be added in the future. */
 
@@ -642,7 +638,6 @@ static struct task_struct *runq_steal_from(struct runq *rq, int dest_cpu, int st
 
 	status = rq->status;
 	offset = start;
-	first = NULL;
 
 again:
 	while ((bit = find_next_bit(status, size, offset)) != size) {
@@ -651,9 +646,8 @@ again:
 		struct task_struct *tmp_task;
 		list_for_each_entry(tmp, queue, runq) {
 			tmp_task = ktz_task_of(tmp);
-			if (first && can_migrate(tmp_task, dest_cpu))
+			if (can_migrate(tmp_task, dest_cpu))
 				return tmp_task;
-			first = tmp_task;
 		}
 		offset = bit + 1;
 	}
@@ -662,8 +656,6 @@ again:
 		start = 0;
 		goto again;
 	}
-	if (first && can_migrate(first, dest_cpu))
-		return first;
 	return NULL;
 }
 
@@ -710,7 +702,8 @@ static struct task_struct *tdq_steal(struct ktz_tdq *tdq, int cpu)
  */
 static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 {
-	int flags, dest_cpu;
+	int dest_cpu;
+	unsigned long flags;
 	struct task_struct *stolen;
 	struct rq *high_rq = RQ(high);
 	struct rq *low_rq = RQ(low);
@@ -743,14 +736,18 @@ static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 	}
 }
 
-static void sched_balance_group(struct sched_group *sg)
+static int sched_balance_group(struct sched_group *sg)
 {
 	struct cpumask hmask, lmask; 
-	int high, low, anylow;
+	int high, low, anylow, moved;
 	struct ktz_tdq *tdq_high;
 	struct ktz_tdq *tdq_low;
 
 	cpumask_setall(&hmask);
+	(void) cpumask_and(&hmask, &hmask, cpu_online_mask);
+	(void) cpumask_and(&lmask, &lmask, cpu_online_mask);
+	moved = 0;
+
 	for (;;) {
 		high = sched_highest(NULL, &hmask, 1);
 		/* Stop if there is no more CPU with transferrable threads. */
@@ -776,6 +773,7 @@ nextlow:
 		if (sched_balance_pair(tdq_high, tdq_low)) {
 			/* CPU that got thread can no longer be a donor. */
 			cpumask_clear_cpu(low, &hmask);
+			moved ++;
 		} else {
 			/*
 			 * If failed, then there is no threads on high
@@ -787,16 +785,18 @@ nextlow:
 			goto nextlow;
 		}
 	}
+	return moved;
 }
 
-static void sched_balance(struct rq *rq)
+static int sched_balance(struct rq *rq)
 {
-	//struct rq *rq = this_rq();
+	int moved;
 	balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
 
 	raw_spin_unlock(&rq->lock);
-	sched_balance_group(NULL);
+	moved = sched_balance_group(NULL);
 	raw_spin_lock(&rq->lock);
+	return moved;
 }
 
 /*
@@ -804,30 +804,35 @@ static void sched_balance(struct rq *rq)
  */ 
 static int tdq_idled(struct ktz_tdq *this_tdq)
 {
-	int this_cpu, victim_cpu, thresh, moved, flags;
+	int this_cpu, victim_cpu, moved;
+	unsigned long flags;
 	struct ktz_tdq *victim_tdq;
 	struct cpumask cpus;
 	struct rq *victim_rq, *this_rq;
 	struct task_struct *stolen;
 
-	thresh = 2;
 	this_rq = RQ(this_tdq);
 	this_cpu = smp_processor_id();
+	BUG_ON(!cpu_active(this_cpu));
 	cpumask_setall(&cpus);
 	/* Don't steal from oursleves. */
 	cpumask_clear_cpu(this_cpu, &cpus);
 
 	while (!cpumask_empty(&cpus)) {
-		victim_cpu = sched_highest(NULL, &cpus, thresh);
+		/* Maybe we received some task(s) during the stealing via
+		 * select_task_rq or load balacing. */
+		if (this_tdq->load)
+			return 0;
+
+		victim_cpu = sched_highest(NULL, &cpus, 1);
 		if (victim_cpu == -1)
 			break;
-		LOG("\t[%d]Pick %d as a victim.", this_cpu, victim_cpu);
 		victim_rq = cpu_rq(victim_cpu);
 		victim_tdq = TDQ(victim_rq);
 
 		raw_spin_lock_irqsave(&victim_rq->lock, flags);
 		/* Make sure the load of the victim still permits us to steal. */
-		if (victim_tdq->load < thresh) {
+		if (victim_tdq->load <= 1) {
 			raw_spin_unlock(&victim_rq->lock);
 			local_irq_restore(flags);
 			continue;
@@ -892,7 +897,6 @@ static inline void runq_print(struct runq *q)
 
 static inline void print_tdq(struct ktz_tdq *tdq)
 {
-	LOG("##################\n");
 	LOG("tdq %p\n", tdq);
 	LOG("idx : %d", tdq->idx);
 	LOG("ridx : %d", tdq->ridx);
@@ -905,6 +909,16 @@ static inline void print_tdq(struct ktz_tdq *tdq)
 	runq_print(&tdq->idle);
 	LOG("##################\n");
 }	
+
+static inline void print_all_tdqs(void)
+{
+	int cpu;
+	for (cpu = 0; cpu < nr_cpu_ids; ++cpu) {
+		LOG("CPU %d TDQ :", cpu);
+		print_tdq(TDQ(cpu_rq(cpu)));
+	}
+	LOG("##################\n");
+}
 
 static inline void print_children(struct task_struct *p)
 {
@@ -927,12 +941,19 @@ static inline void print_loads(void)
 {
 	int cpu;
 	struct cpumask mask;
+	unsigned long flags;
 	cpumask_setall(&mask);
-	LOG("CPU loads : ");
+	LOG("[%d] CPU loads : ", smp_processor_id());
 	for_each_cpu(cpu, &mask) {
 		struct rq *rq = cpu_rq(cpu);
 		struct ktz_tdq *tdq = TDQ(rq);
-		LOG("\t| Cpu %d, load = %d\n", cpu, tdq->load);
+		if (smp_processor_id() != cpu)
+			raw_spin_lock_irqsave(&rq->lock, flags);
+		LOG("\t| Cpu %d, load = %d, nr_running = %llu\n", cpu, tdq->load, rq->nr_running);
+		if (smp_processor_id() != cpu) {
+			raw_spin_unlock(&rq->lock);
+			local_irq_restore(flags);
+		}
 	}
 	LOG("##################\n");
 }
@@ -1014,21 +1035,27 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 	struct task_struct *next_task;
 	int this_cpu = smp_processor_id();
 	int steal;
+	int again = 0;
 
+	put_prev_task(rq, prev);
+redo:
 	if (tdq->load) {
-		put_prev_task(rq, prev);
 		next_task = tdq_choose(tdq, NULL);
 		return next_task;
 	}
 	else {
-		LOG("[%d] Idle, stealing.", this_cpu);
+		BUG_ON(again);
 		lockdep_unpin_lock(&rq->lock, cookie);
 		raw_spin_unlock(&rq->lock);
 		steal = tdq_idled(tdq);
 		raw_spin_lock(&rq->lock);
 		lockdep_repin_lock(&rq->lock, cookie);
-		if (steal) {
-			return RETRY_TASK;
+
+		/* Either we managed to steal a task, or $BALANCING_CPU gave us
+		 * one while we were trying. In both case we retry. */
+		if (steal || tdq->load) {
+			again = 1;
+			goto redo;
 		}
 		else {
 			return NULL;	
@@ -1062,9 +1089,7 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (smp_processor_id() == BALANCING_CPU) {
 		if (balance_ticks && --balance_ticks == 0) {
-			preempt_disable();
 			sched_balance(rq);
-			preempt_enable();
 		}
 	}
 
@@ -1144,13 +1169,17 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 	return 0;
 }
 #ifdef CONFIG_SMP
-static inline int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
+static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int wake_flags)
 {
+	//return smp_processor_id();
 	int ccpu;
-	int best_cpu = -1;
 	int min_load = INT_MAX;
 	struct cpumask mask;
-	(void) cpumask_and(&mask, &p->cpus_allowed, cpu_online_mask);
+
+	(void) cpumask_and(&mask, &p->cpus_allowed, cpu_active_mask);
+	(void) cpumask_and(&mask, &mask, cpu_possible_mask);
+	(void) cpumask_and(&mask, &mask, cpu_online_mask);
+	(void) cpumask_and(&mask, &mask, cpu_present_mask);
 
 	//rcu_read_lock();
 	/* Try to find the cpu having min load. Naive approach for now. */
@@ -1160,13 +1189,13 @@ static inline int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag
 
 		if (tdq->load < min_load) {
 			min_load = tdq->load;
-			best_cpu = ccpu;
+			cpu = ccpu;
 		}
 	}
 	//rcu_read_unlock();
 
-	BUG_ON(best_cpu == -1);
-	return best_cpu;
+out:
+	return cpu;
 }
 
 static void migrate_task_rq_ktz(struct task_struct *p)

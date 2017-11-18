@@ -3284,8 +3284,10 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct pin_cookie cookie
 			goto again;
 
 		/* assumes fair_sched_class->next == idle_sched_class */
-		if (unlikely(!p))
+		if (unlikely(!p)) {
+			BUG();
 			p = idle_sched_class.pick_next_task(rq, prev, cookie);
+		}
 
 		return p;
 	}
