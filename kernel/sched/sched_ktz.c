@@ -566,19 +566,33 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 	td->ktz_prio = prio;
 }
 
-static inline int sched_highest(struct sched_group *sg, struct cpumask *mask, int minload)
+static inline int sched_highest(struct sched_domain *sd, struct cpumask *mask, int minload)
 {
 	int ccpu;
 	int highest_cpu = -1;
 	int max_load = -1;
+	struct rq *rq;
+	struct ktz_tdq *tdq;
 
-	for_each_cpu(ccpu, mask) {
-		struct rq *rq = cpu_rq(ccpu);
-		struct ktz_tdq *tdq = TDQ(rq);
-
-		if (minload < tdq->load && tdq->load > max_load) {
-			max_load = tdq->load;
-			highest_cpu = ccpu;
+	/* Copy paste to avoid copying masks. */
+	if (sd) {
+		for_each_cpu_and(ccpu, mask, sched_domain_span(sd)) {
+			rq = cpu_rq(ccpu);
+			tdq = TDQ(rq);
+			if (minload < tdq->load && tdq->load > max_load) {
+				max_load = tdq->load;
+				highest_cpu = ccpu;
+			}
+		}
+	}
+	else {
+		for_each_cpu(ccpu, mask) {
+			rq = cpu_rq(ccpu);
+			tdq = TDQ(rq);
+			if (minload < tdq->load && tdq->load > max_load) {
+				max_load = tdq->load;
+				highest_cpu = ccpu;
+			}
 		}
 	}
 	return highest_cpu;
@@ -594,7 +608,7 @@ static inline int sched_lowest(struct sched_group *sg, struct cpumask *mask, int
 		struct rq *rq = cpu_rq(ccpu);
 		struct ktz_tdq *tdq = TDQ(rq);
 
-		if (pri != -1 && tdq->lowpri < pri)
+		if (pri != -1 && tdq->lowpri <= pri)
 			continue;
 
 		if (tdq->load < min_load && tdq->load < maxload) {
@@ -742,7 +756,6 @@ static int sched_balance_group(struct sched_group *sg)
 
 	cpumask_setall(&hmask);
 	(void) cpumask_and(&hmask, &hmask, cpu_online_mask);
-	(void) cpumask_and(&lmask, &lmask, cpu_online_mask);
 	moved = 0;
 
 	for (;;) {
@@ -805,6 +818,7 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 	unsigned long flags;
 	struct ktz_tdq *victim_tdq;
 	struct cpumask cpus;
+	struct sched_domain *sd;
 	struct rq *victim_rq, *this_rq;
 	struct task_struct *stolen;
 
@@ -816,15 +830,18 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 	cpumask_clear_cpu(this_cpu, &cpus);
 	(void) cpumask_and(&cpus, &cpus, cpu_online_mask);
 
-	while (!cpumask_empty(&cpus)) {
+	for_each_domain(this_cpu, sd) {
 		/* Maybe we received some task(s) during the stealing via
 		 * select_task_rq or load balacing. */
 		if (this_tdq->load)
 			return 0;
 
-		victim_cpu = sched_highest(NULL, &cpus, 1);
+		victim_cpu = sched_highest(sd, &cpus, 1);
 		if (victim_cpu == -1)
-			break;
+			continue;
+
+		/* Remove the victim for next iterations. */
+		cpumask_clear_cpu(victim_cpu, &cpus);
 		victim_rq = cpu_rq(victim_cpu);
 		victim_tdq = TDQ(victim_rq);
 
@@ -850,9 +867,6 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 			local_irq_restore(flags);
 			return 1;
 		}
-
-		/* Remove the victim for next iterations. */
-		cpumask_clear_cpu(victim_cpu, &cpus);
 	}
 
 	/* Failed to steal. */
@@ -1176,24 +1190,20 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 #ifdef CONFIG_SMP
 static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int wake_flags)
 {
-	int ccpu;
-	int min_load = INT_MAX;
+	int curr_cpu;
 	struct cpumask mask;
 
+	curr_cpu = task_cpu(p);
 	(void) cpumask_and(&mask, &p->cpus_allowed, cpu_online_mask);
 
-	/* Try to find the cpu having min load. Naive approach for now. */
-	for_each_cpu(ccpu, &mask) {
-		struct rq *rq = cpu_rq(ccpu);
-		struct ktz_tdq *tdq = TDQ(rq);
+	/* First try to pick a CPU on which we can directly run on. */
+	cpu = sched_lowest(NULL, &mask, p->ktz_prio, INT_MAX, curr_cpu);
+	if (cpu != -1)
+		return cpu;
 
-		if (tdq->load < min_load) {
-			min_load = tdq->load;
-			cpu = ccpu;
-		}
-	}
-
-out:
+	/* Fallback to any CPU. */
+	cpu = sched_lowest(NULL, &mask, -1, INT_MAX, curr_cpu);
+	BUG_ON(cpu == -1);
 	return cpu;
 }
 
