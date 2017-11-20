@@ -94,6 +94,8 @@ unsigned int sysctl_ktz_enabled = 1; /* Enabled by default */
 unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 						 0 = default. */
 
+static int ready[32];
+
 /* Helper macros / defines. */
 #define LOG(...) 	printk_deferred(__VA_ARGS__)
 //#define LOG(...) 	do {} while (0)
@@ -135,6 +137,8 @@ void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 
 	if (smp_processor_id() == BALANCING_CPU)
 		balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
+
+	ready[smp_processor_id()] = 1;
 }
 
 static inline struct task_struct *ktz_task_of(struct sched_ktz_entity *ktz_se)
@@ -1198,12 +1202,20 @@ static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int w
 
 	/* First try to pick a CPU on which we can directly run on. */
 	cpu = sched_lowest(NULL, &mask, p->ktz_prio, INT_MAX, curr_cpu);
-	if (cpu != -1)
-		return cpu;
-
-	/* Fallback to any CPU. */
-	cpu = sched_lowest(NULL, &mask, -1, INT_MAX, curr_cpu);
+	if (cpu == -1) {
+		/* Fallback to any CPU. */
+		cpu = sched_lowest(NULL, &mask, -1, INT_MAX, curr_cpu);
+	}
 	BUG_ON(cpu == -1);
+	if (!ready[cpu]) {
+		LOG("possible\t: %*pbl\n", cpumask_pr_args(cpu_possible_mask));
+		LOG("online\t: %*pbl\n", cpumask_pr_args(cpu_online_mask));
+		LOG("present\t: %*pbl\n", cpumask_pr_args(cpu_present_mask));
+		LOG("active\t: %*pbl\n", cpumask_pr_args(cpu_active_mask));
+		LOG("allowed\t: %*pbl\n", cpumask_pr_args(&p->cpus_allowed));
+		LOG("Chosen cpu : %d\n", cpu);
+		BUG();
+	}
 	return cpu;
 }
 
