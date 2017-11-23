@@ -162,14 +162,13 @@ int cpu_search(const struct sched_domain *cg, struct cpu_search *low, struct cpu
 {
 	struct cpu_search lgroup;
 	struct cpu_search hgroup;
-	struct cpumask *cpumask;
+	struct cpumask cpumask;
 	struct ktz_tdq *tdq;
 	int cpu, i, hload, lload, load, total, rnd;
 
 	total = 0;
 	BUG_ON(!cg);
-	cpumask = sched_domain_span(cg);
-	BUG_ON(!cpumask);
+	cpumask_copy(&cpumask, sched_domain_span(cg));
 	if (match & CPU_SEARCH_LOWEST) {
 		lload = INT_MAX;
 		lgroup = *low;
@@ -181,12 +180,12 @@ int cpu_search(const struct sched_domain *cg, struct cpu_search *low, struct cpu
 
 	/* Iterate through the child CPU groups and then remaining CPUs. */
 	//for (i = cg->span_weight, cpu = nr_cpu_ids; ; ) {
-	for_each_cpu(cpu, cpumask) {
+	for_each_cpu(cpu, &cpumask) {
 		if (match & CPU_SEARCH_LOWEST)
 			lgroup.cs_cpu = -1;
 		if (match & CPU_SEARCH_HIGHEST)
 			hgroup.cs_cpu = -1;
-		cpumask_clear_cpu(cpu, cpumask);
+		cpumask_clear_cpu(cpu, &cpumask);
 		tdq = TDQ(cpu_rq(cpu));
 		load = tdq->load * 256;
 		rnd = sched_random() % 32;
