@@ -108,12 +108,25 @@ unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 #define TDQ(rq)		(&(rq)->ktz)
 #define RQ(tdq)		(container_of(tdq, struct rq, ktz))
 
+static inline void print_loads(void);
 static uint32_t sched_random(void)
 {
 	int r;
 	get_random_bytes(&r, sizeof(r));
 	return r;
 }
+
+static struct sched_domain *get_top_domain(int cpu)
+{
+	return rcu_dereference(per_cpu(sd_llc, cpu));
+	/*struct sched_domain *sd;
+	struct sched_domain *top;
+	for_each_domain(cpu, sd) {
+		top = sd;
+	}
+	return top;*/
+}
+
 
 #define	CPU_SEARCH_LOWEST	0x1
 #define	CPU_SEARCH_HIGHEST	0x2
@@ -150,12 +163,13 @@ int cpu_search(const struct sched_domain *cg, struct cpu_search *low, struct cpu
 	struct cpu_search lgroup;
 	struct cpu_search hgroup;
 	struct cpumask *cpumask;
-	struct sched_domain *child;
 	struct ktz_tdq *tdq;
 	int cpu, i, hload, lload, load, total, rnd;
 
 	total = 0;
+	BUG_ON(!cg);
 	cpumask = sched_domain_span(cg);
+	BUG_ON(!cpumask);
 	if (match & CPU_SEARCH_LOWEST) {
 		lload = INT_MAX;
 		lgroup = *low;
@@ -711,71 +725,26 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 
 static inline int sched_highest(struct sched_domain *sd, struct cpumask *mask, int minload)
 {
-	int ccpu;
-	int highest_cpu = -1;
-	int max_load = -1;
-	struct rq *rq;
-	struct ktz_tdq *tdq;
+	struct cpu_search high;
 
-	/* Copy paste to avoid copying masks. */
-	if (sd) {
-		for_each_cpu_and(ccpu, mask, sched_domain_span(sd)) {
-			rq = cpu_rq(ccpu);
-			tdq = TDQ(rq);
-			if (minload < tdq->load && tdq->load > max_load) {
-				max_load = tdq->load;
-				highest_cpu = ccpu;
-			}
-		}
-	}
-	else {
-		for_each_cpu(ccpu, mask) {
-			rq = cpu_rq(ccpu);
-			tdq = TDQ(rq);
-			if (minload < tdq->load && tdq->load > max_load) {
-				max_load = tdq->load;
-				highest_cpu = ccpu;
-			}
-		}
-	}
-	return highest_cpu;
+	high.cs_cpu = -1;
+	high.cs_mask = mask;
+	high.cs_limit = minload;
+	cpu_search_highest(sd, &high);
+	return high.cs_cpu;
 }
 
 static inline int sched_lowest(struct sched_domain *sd, struct cpumask *mask, int pri, int maxload, int prefer)
 {
-	int ccpu;
-	int lowest_cpu = -1;
-	int min_load = INT_MAX;
+	struct cpu_search low;
 
-	if (sd) {
-		for_each_cpu_and(ccpu, mask, sched_domain_span(sd)) {
-			struct rq *rq = cpu_rq(ccpu);
-			struct ktz_tdq *tdq = TDQ(rq);
-
-			if (pri != -1 && tdq->lowpri <= pri)
-				continue;
-
-			if (tdq->load < min_load && tdq->load < maxload) {
-				min_load = tdq->load;
-				lowest_cpu = ccpu;
-			}
-		}
-	}
-	else {
-		for_each_cpu(ccpu, mask) {
-			struct rq *rq = cpu_rq(ccpu);
-			struct ktz_tdq *tdq = TDQ(rq);
-
-			if (pri != -1 && tdq->lowpri <= pri)
-				continue;
-
-			if (tdq->load < min_load && tdq->load < maxload) {
-				min_load = tdq->load;
-				lowest_cpu = ccpu;
-			}
-		}
-	}
-	return lowest_cpu;
+	low.cs_cpu = -1;
+	low.cs_prefer = prefer;
+	low.cs_mask = mask;
+	low.cs_pri = pri;
+	low.cs_limit = maxload;
+	cpu_search_lowest(sd, &low);
+	return low.cs_cpu;
 }
 
 static bool can_migrate(struct task_struct *p, int to_cpu)
@@ -905,7 +874,7 @@ static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 	}
 }
 
-static int sched_balance_group(struct sched_group *sg)
+static int sched_balance_group(struct sched_domain *sd)
 {
 	struct cpumask hmask, lmask; 
 	int high, low, anylow, moved;
@@ -917,7 +886,7 @@ static int sched_balance_group(struct sched_group *sg)
 	moved = 0;
 
 	for (;;) {
-		high = sched_highest(NULL, &hmask, 1);
+		high = sched_highest(sd, &hmask, 1);
 		/* Stop if there is no more CPU with transferrable threads. */
 		if (high == -1)
 			break;
@@ -929,7 +898,7 @@ static int sched_balance_group(struct sched_group *sg)
 			break;
 		anylow = 1;
 nextlow:
-		low = sched_lowest(NULL, &lmask, -1, tdq_high->load - 1, high);
+		low = sched_lowest(sd, &lmask, -1, tdq_high->load - 1, high);
 		/* Stop if we looked well and found no less loaded CPU. */
 		if (anylow && low == -1)
 			break;
@@ -959,10 +928,16 @@ nextlow:
 static int sched_balance(struct rq *rq)
 {
 	int moved;
+	struct sched_domain *top;
+
 	balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
+	top = get_top_domain(smp_processor_id());
+
+	if (!top)
+		return 0;
 
 	raw_spin_unlock(&rq->lock);
-	moved = sched_balance_group(NULL);
+	moved = sched_balance_group(top);
 	raw_spin_lock(&rq->lock);
 	return moved;
 }
@@ -1355,16 +1330,6 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 	return 0;
 }
 #ifdef CONFIG_SMP
-static struct sched_domain *get_top_domain(int cpu)
-{
-	struct sched_domain *sd;
-	struct sched_domain *top;
-	for_each_domain(cpu, sd) {
-		top = sd;
-	}
-	return top;
-}
-
 static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int wake_flags)
 {
 	int curr_cpu, this_cpu, pri;
