@@ -66,7 +66,6 @@ void runq_remove_idx(struct runq *q, struct task_struct *p, int *idx)
 	struct sched_ktz_entity *ke = &p->ktz_se;
 
 	pri = ke->rqindex;
-	BUG_ON(!(0 <= pri && pri < KTZ_HEADS_PER_RUNQ));
 	head = &q->queues[pri];
 	list_del_init(&ke->runq);
 	if (list_empty(head)) {

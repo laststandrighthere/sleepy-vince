@@ -77,9 +77,14 @@
 /* Load balancing stuff */
 #define THREAD_CAN_MIGRATE(td)	false /*TODO*/
 #define BALANCING_CPU		0 /* CPU 0 is responsible for load balancing. */
+#define	SCHED_AFFINITY(ts, t)	((ts)->ltick > jiffies - ((t) * affinity))
+#define CG_SHARE_L1     1
+#define CG_SHARE_L2     2
+#define CG_SHARE_L3     3
 static int balance_ticks;
 static int balance_interval = 128;	/* Default set in sched_initticks(). */
 unsigned int idle_stealing_cooldown = 500000UL;
+static int affinity = 100; /* TODO : check validity of this. */
 
 
 /* Globals */
@@ -598,22 +603,38 @@ static inline int sched_highest(struct sched_domain *sd, struct cpumask *mask, i
 	return highest_cpu;
 }
 
-static inline int sched_lowest(struct sched_group *sg, struct cpumask *mask, int pri, int maxload, int prefer)
+static inline int sched_lowest(struct sched_domain *sd, struct cpumask *mask, int pri, int maxload, int prefer)
 {
 	int ccpu;
 	int lowest_cpu = -1;
 	int min_load = INT_MAX;
 
-	for_each_cpu(ccpu, mask) {
-		struct rq *rq = cpu_rq(ccpu);
-		struct ktz_tdq *tdq = TDQ(rq);
+	if (sd) {
+		for_each_cpu_and(ccpu, mask, sched_domain_span(sd)) {
+			struct rq *rq = cpu_rq(ccpu);
+			struct ktz_tdq *tdq = TDQ(rq);
 
-		if (pri != -1 && tdq->lowpri <= pri)
-			continue;
+			if (pri != -1 && tdq->lowpri <= pri)
+				continue;
 
-		if (tdq->load < min_load && tdq->load < maxload) {
-			min_load = tdq->load;
-			lowest_cpu = ccpu;
+			if (tdq->load < min_load && tdq->load < maxload) {
+				min_load = tdq->load;
+				lowest_cpu = ccpu;
+			}
+		}
+	}
+	else {
+		for_each_cpu(ccpu, mask) {
+			struct rq *rq = cpu_rq(ccpu);
+			struct ktz_tdq *tdq = TDQ(rq);
+
+			if (pri != -1 && tdq->lowpri <= pri)
+				continue;
+
+			if (tdq->load < min_load && tdq->load < maxload) {
+				min_load = tdq->load;
+				lowest_cpu = ccpu;
+			}
 		}
 	}
 	return lowest_cpu;
@@ -718,7 +739,6 @@ static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 	struct task_struct *stolen;
 	struct rq *high_rq = RQ(high);
 	struct rq *low_rq = RQ(low);
-
 
 	/* We will move a task from high to low. */
 	dest_cpu = RQ(low)->cpu;
@@ -1001,6 +1021,7 @@ static void dequeue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 		ktz_se->slptick = jiffies;
 	}
 	//list_del_init(&ktz_se->run_list);
+	BUG_ON(!ktz_se->curr_runq);
 	tdq_runq_rem(tdq, p);
 	ktz_se->curr_runq = NULL;
 	tdq_load_rem(tdq, p);
@@ -1189,21 +1210,77 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 	return 0;
 }
 #ifdef CONFIG_SMP
+static struct sched_domain *get_top_domain(int cpu)
+{
+	struct sched_domain *sd;
+	struct sched_domain *top;
+	for_each_domain(cpu, sd) {
+		top = sd;
+	}
+	return top;
+}
+
 static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int wake_flags)
 {
-	int curr_cpu;
-	struct cpumask mask;
+	int curr_cpu, this_cpu, pri;
+	struct ktz_tdq *curr_tdq;
+	struct sched_ktz_entity *ktz_se;
+	struct sched_domain *sd;
+	struct sched_domain *last_domain;
+	struct sched_domain *root_domain;
+	struct ktz_tdq *this_tdq;
 
 	curr_cpu = task_cpu(p);
-	(void) cpumask_and(&mask, &p->cpus_allowed, cpu_online_mask);
-
-	/* First try to pick a CPU on which we can directly run on. */
-	cpu = sched_lowest(NULL, &mask, p->ktz_prio, INT_MAX, curr_cpu);
-	if (cpu == -1) {
-		/* Fallback to any CPU. */
-		cpu = sched_lowest(NULL, &mask, -1, INT_MAX, curr_cpu);
+	curr_tdq = TDQ(task_rq(p));
+	ktz_se = KTZ_SE(p);
+	this_cpu = smp_processor_id();
+	pri = p->ktz_prio;
+	root_domain = get_top_domain(this_cpu);
+	this_tdq = TDQ(cpu_rq(this_cpu));
+	
+	/*
+	 * If the task can run on the last cpu and the affinity has not
+	 * expired or it is idle run it there.
+	 */
+	if (cpumask_test_cpu(curr_cpu, &p->cpus_allowed) &&
+	   (curr_tdq->load == 0 || SCHED_AFFINITY(ktz_se, CG_SHARE_L2))) {
+		return curr_cpu;
 	}
+
+	/*
+	 * Search for the last level cache CPU group in the tree.
+	 * Skip caches with expired affinity time and SMT groups.
+	 * Affinity to higher level caches will be handled less aggressively.
+	 */
+	last_domain = NULL;
+	for_each_domain(this_cpu, sd) {
+		if (!SCHED_AFFINITY(ktz_se, sd->level))
+			continue;
+		last_domain = sd;
+	}
+
+	/* If not top domain. */
+	if (last_domain && last_domain != root_domain)
+		cpu = sched_lowest(last_domain, &p->cpus_allowed, max(pri, PRI_MAX_TIMESHARE), INT_MAX, curr_cpu);
+
+	/* Search globally for the less loaded CPU we can run now. */
+	if (cpu == -1)
+		cpu = sched_lowest(root_domain, &p->cpus_allowed, pri, INT_MAX, curr_cpu);
+	/* Search globally for the less loaded CPU. */
+	if (cpu == -1)
+		cpu = sched_lowest(root_domain, &p->cpus_allowed, -1, INT_MAX, curr_cpu);
 	BUG_ON(cpu == -1);
+
+	/*
+	 * Compare the lowest loaded cpu to current cpu.
+	 */
+	if (cpumask_test_cpu(this_cpu, &p->cpus_allowed) &&
+	    this_tdq->lowpri > pri &&
+	    curr_tdq->load &&
+	    this_tdq->load <= curr_tdq->load + 1) {
+		cpu = this_cpu;
+	}
+
 	return cpu;
 }
 
