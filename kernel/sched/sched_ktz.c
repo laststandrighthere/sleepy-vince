@@ -1,3 +1,4 @@
+#include <linux/random.h>
 #include "sched.h"
 
 /*
@@ -109,8 +110,142 @@ unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 
 static uint32_t sched_random(void)
 {
-	/* http://dilbert.com/strip/2001-10-25 */
-	return balance_interval - 1;
+	int r;
+	get_random_bytes(&r, sizeof(r));
+	return r;
+}
+
+#define	CPU_SEARCH_LOWEST	0x1
+#define	CPU_SEARCH_HIGHEST	0x2
+#define	CPU_SEARCH_BOTH		(CPU_SEARCH_LOWEST|CPU_SEARCH_HIGHEST)
+
+struct cpu_search {
+	struct cpumask *cs_mask;
+	int	cs_prefer;
+	int	cs_pri;		/* Min priority for low. */
+	int	cs_limit;	/* Max load for low, min load for high. */
+	int	cs_cpu;
+	int	cs_load;
+};
+
+static int cpu_search(const struct sched_domain *cg, struct cpu_search *low, struct cpu_search *high, const int match);
+
+inline int cpu_search_lowest(const struct sched_domain *cg, struct cpu_search *low)
+{
+	return cpu_search(cg, low, NULL, CPU_SEARCH_LOWEST);
+}
+
+inline int cpu_search_highest(const struct sched_domain *cg, struct cpu_search *high)
+{
+	return cpu_search(cg, NULL, high, CPU_SEARCH_HIGHEST);
+}
+
+inline int cpu_search_both(const struct sched_domain *cg, struct cpu_search *low, struct cpu_search *high)
+{
+	return cpu_search(cg, low, high, CPU_SEARCH_BOTH);
+}
+
+int cpu_search(const struct sched_domain *cg, struct cpu_search *low, struct cpu_search *high, const int match)
+{
+	struct cpu_search lgroup;
+	struct cpu_search hgroup;
+	struct cpumask *cpumask;
+	struct sched_domain *child;
+	struct ktz_tdq *tdq;
+	int cpu, i, hload, lload, load, total, rnd;
+
+	total = 0;
+	cpumask = sched_domain_span(cg);
+	if (match & CPU_SEARCH_LOWEST) {
+		lload = INT_MAX;
+		lgroup = *low;
+	}
+	if (match & CPU_SEARCH_HIGHEST) {
+		hload = INT_MIN;
+		hgroup = *high;
+	}
+
+	/* Iterate through the child CPU groups and then remaining CPUs. */
+	//for (i = cg->span_weight, cpu = nr_cpu_ids; ; ) {
+	for_each_cpu(cpu, cpumask) {
+		if (match & CPU_SEARCH_LOWEST)
+			lgroup.cs_cpu = -1;
+		if (match & CPU_SEARCH_HIGHEST)
+			hgroup.cs_cpu = -1;
+		cpumask_clear_cpu(cpu, cpumask);
+		tdq = TDQ(cpu_rq(cpu));
+		load = tdq->load * 256;
+		rnd = sched_random() % 32;
+		if (match & CPU_SEARCH_LOWEST) {
+			if (cpu == low->cs_prefer)
+				load -= 64;
+			/* If that CPU is allowed and get data. */
+			if (tdq->lowpri > lgroup.cs_pri &&
+			    tdq->load <= lgroup.cs_limit &&
+			    cpumask_test_cpu(cpu, lgroup.cs_mask)) {
+				lgroup.cs_cpu = cpu;
+				lgroup.cs_load = load - rnd;
+			}
+		}
+		if (match & CPU_SEARCH_HIGHEST)
+			if (tdq->load >= hgroup.cs_limit &&
+			    cpumask_test_cpu(cpu, hgroup.cs_mask)) {
+				hgroup.cs_cpu = cpu;
+				hgroup.cs_load = load - rnd;
+			}
+		total += load;
+
+		/* We have info about child item. Compare it. */
+		if (match & CPU_SEARCH_LOWEST) {
+			if (lgroup.cs_cpu >= 0 &&
+			    (load < lload ||
+			     (load == lload && lgroup.cs_load < low->cs_load))) {
+				lload = load;
+				low->cs_cpu = lgroup.cs_cpu;
+				low->cs_load = lgroup.cs_load;
+			}
+		}
+		if (match & CPU_SEARCH_HIGHEST) {
+			if (hgroup.cs_cpu >= 0 &&
+			    (load > hload ||
+			     (load == hload && hgroup.cs_load > high->cs_load))) {
+				hload = load;
+				high->cs_cpu = hgroup.cs_cpu;
+				high->cs_load = hgroup.cs_load;
+			}
+		}
+	}
+	return (total);
+}
+
+static void print_groups(struct sched_domain *sd)
+{
+	struct sched_group *first = sd->groups;
+	struct sched_group *g;
+	int i;
+
+	if (!first)
+		return;
+
+	i = 0;
+	g = first;
+	do {
+		LOG("g%d : %p", i, g);
+		g = g->next;
+		i ++;
+	} while (g != first);
+}
+
+static void print_sched_domain(int cpu)
+{
+	struct sched_domain *sd;
+	LOG("Domains for CPU %d : ", cpu);
+	for_each_domain(cpu, sd) {
+		LOG("sd : %p", sd);
+		LOG("span : %*pbl", cpumask_pr_args(sched_domain_span(sd)));
+		LOG("gr 0 : %p", sd->groups);
+	}
+	LOG("###################");
 }
 
 void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
@@ -137,6 +272,9 @@ void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 	PRINT(SCHED_PRI_MIN);
 	PRINT(SCHED_PRI_MAX);
 	PRINT(SCHED_PRI_RANGE);
+
+	print_sched_domain(0);
+	print_sched_domain(1);
 
 	if (smp_processor_id() == BALANCING_CPU)
 		balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
@@ -1127,6 +1265,13 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 
 	tdq->oldswitchcnt = tdq->switchcnt;
 	tdq->switchcnt = tdq->load;
+
+	/*if (rq->sd) {
+		print_sched_domain(0);
+		print_sched_domain(1);
+		print_sched_domain(2);
+		print_sched_domain(3);
+	}*/
 
 	if (smp_processor_id() == BALANCING_CPU) {
 		if (balance_ticks && --balance_ticks == 0) {
