@@ -50,7 +50,8 @@ struct root_domain {
  * This data should only be modified by the local cpu.
  */
 struct rq {
-	raw_spinlock_t lock;
+	raw_spinlock_t *lock;
+	raw_spinlock_t *orig_lock;
 
 	struct task_struct *curr, *idle, *stop;
 	struct mm_struct *prev_mm;
@@ -89,7 +90,7 @@ struct rq {
 		iowait_ns, idle_ns;
 	atomic_t nr_iowait;
 
-	skiplist_node node;
+	skiplist_node *node;
 	skiplist *sl;
 #ifdef CONFIG_SMP
 	struct task_struct *preempt; /* Preempt triggered on this task */
@@ -103,11 +104,17 @@ struct rq {
 	struct rq **rq_order; /* RQs ordered by relative cache distance */
 
 #ifdef CONFIG_SCHED_SMT
+#ifdef CONFIG_RQSHARE_SMT
+	struct rq *smt_leader; /* First logical CPU in SMT siblings */
+#endif
 	cpumask_t thread_mask;
 	bool (*siblings_idle)(struct rq *rq);
 	/* See if all smt siblings are idle */
 #endif /* CONFIG_SCHED_SMT */
 #ifdef CONFIG_SCHED_MC
+#ifdef CONFIG_RQSHARE_MC
+	struct rq *mc_leader; /* First logical CPU in MC siblings */
+#endif
 	cpumask_t core_mask;
 	bool (*cache_idle)(struct rq *rq);
 	/* See if all cache siblings are idle */
@@ -223,13 +230,13 @@ static inline u64 __rq_clock_broken(struct rq *rq)
 
 static inline u64 rq_clock(struct rq *rq)
 {
-	lockdep_assert_held(&rq->lock);
+	lockdep_assert_held(rq->lock);
 	return rq->clock;
 }
 
 static inline u64 rq_clock_task(struct rq *rq)
 {
-	lockdep_assert_held(&rq->lock);
+	lockdep_assert_held(rq->lock);
 	return rq->clock_task;
 }
 
