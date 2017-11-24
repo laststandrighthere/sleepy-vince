@@ -87,6 +87,8 @@ static int balance_interval = 128;	/* Default set in sched_initticks(). */
 unsigned int idle_stealing_cooldown = 500000UL;
 static int affinity = 100; /* TODO : check validity of this. */
 
+static unsigned long long last_balance = 0;
+
 
 /* Globals */
 static int tickincr = 1 << SCHED_TICK_SHIFT;	/* 1 Should be correct. */
@@ -711,6 +713,7 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 	 */
 	if (task_curr(td)) {
 		//tdq = TDQ_CPU(ts->ts_cpu); TODO : CAREFUL WITH SMP !
+		BUG_ON(tdq != TDQ(cpu_rq(td->cpu)));
 		oldpri = td->ktz_prio;
 		td->ktz_prio = prio;
 		if (prio < tdq->lowpri)
@@ -1249,6 +1252,9 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 
 	if (smp_processor_id() == BALANCING_CPU) {
 		if (balance_ticks && --balance_ticks == 0) {
+			//unsigned long long p = sched_clock() - last_balance;
+			//LOG("Balance period : %llu ms", p / 1000000);
+			//last_balance = sched_clock();
 			sched_balance(rq);
 		}
 	}
