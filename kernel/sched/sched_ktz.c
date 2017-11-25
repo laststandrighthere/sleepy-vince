@@ -868,6 +868,7 @@ static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 		attach_task(low_rq, stolen);
 		raw_spin_unlock(&low_rq->lock);
 		local_irq_restore(flags);
+		resched_curr(low_rq);
 		return 1;
 	}
 	else {
@@ -934,7 +935,7 @@ static int sched_balance(struct rq *rq)
 	balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
 
 	if (!rq->sd)
-		return;
+		return 0;
 	top = get_top_domain(smp_processor_id());
 
 	if (!top)
