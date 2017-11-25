@@ -1200,8 +1200,8 @@ redo:
 		BUG_ON(again);
 
 		rq->idle_stamp = rq_clock(rq);
-		if (rq->avg_idle < idle_stealing_cooldown)
-			return NULL;
+		/*if (rq->avg_idle < idle_stealing_cooldown)
+			return NULL;*/
 
 		/* Steal something. */
 		lockdep_unpin_lock(&rq->lock, cookie);
@@ -1262,9 +1262,9 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 		print_sched_domain(smp_processor_id());
 	}*/
 
-	if (smp_processor_id() == BALANCING_CPU) {
+	/*if (smp_processor_id() == BALANCING_CPU) {
 		check_balance(rq, false);
-	}
+	}*/
 
 	/*
 	 * Advance the insert index once for each tick to ensure that all
