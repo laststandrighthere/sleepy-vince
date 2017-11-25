@@ -1235,6 +1235,18 @@ static void set_curr_task_ktz(struct rq *rq)
 {
 }
 
+void check_balance(struct rq *rq, bool idle)
+{
+	if (balance_ticks && --balance_ticks == 0) {
+		if (idle)
+			LOG("Balance from Idle.");
+		unsigned long long p = sched_clock() - last_balance;
+		LOG("Balance period : %llu ms", p / 1000000);
+		last_balance = sched_clock();
+		sched_balance(rq);
+	}
+}
+
 static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 {
 	struct ktz_tdq *tdq = TDQ(rq);
@@ -1251,12 +1263,7 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 	}*/
 
 	if (smp_processor_id() == BALANCING_CPU) {
-		if (balance_ticks && --balance_ticks == 0) {
-			//unsigned long long p = sched_clock() - last_balance;
-			//LOG("Balance period : %llu ms", p / 1000000);
-			//last_balance = sched_clock();
-			sched_balance(rq);
-		}
+		check_balance(rq, false);
 	}
 
 	/*

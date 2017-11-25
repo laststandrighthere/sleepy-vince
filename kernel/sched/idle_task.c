@@ -7,6 +7,8 @@
  *  handled in sched/fair.c)
  */
 
+extern void check_balance(struct rq *rq, bool idle);
+
 #ifdef CONFIG_SMP
 static int
 select_task_rq_idle(struct task_struct *p, int cpu, int sd_flag, int flags)
@@ -52,6 +54,9 @@ static void put_prev_task_idle(struct rq *rq, struct task_struct *prev)
 
 static void task_tick_idle(struct rq *rq, struct task_struct *curr, int queued)
 {
+	if (!smp_processor_id()) {
+		check_balance(rq, true);
+	}
 }
 
 static void set_curr_task_idle(struct rq *rq)
