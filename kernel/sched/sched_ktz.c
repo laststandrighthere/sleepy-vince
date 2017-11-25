@@ -120,13 +120,11 @@ static uint32_t sched_random(void)
 
 static struct sched_domain *get_top_domain(int cpu)
 {
-	//return rcu_dereference(per_cpu(sd_llc, cpu));
-	struct sched_domain *sd;
-	struct sched_domain *top;
-	for_each_domain(cpu, sd) {
-		top = sd;
+	struct sched_domain *curr = rcu_dereference(per_cpu(sd_llc, cpu));
+	while (curr->parent) {
+		curr = curr->parent;
 	}
-	return top;
+	return curr;
 }
 
 
@@ -255,6 +253,7 @@ static void print_sched_domain(int cpu)
 {
 	struct sched_domain *sd;
 	LOG("Domains for CPU %d : ", cpu);
+	LOG("top : %p", get_top_domain(cpu));
 	for_each_domain(cpu, sd) {
 		LOG("sd : %p", sd);
 		LOG("span : %*pbl", cpumask_pr_args(sched_domain_span(sd)));
@@ -288,8 +287,8 @@ void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 	PRINT(SCHED_PRI_MAX);
 	PRINT(SCHED_PRI_RANGE);
 
-	print_sched_domain(0);
-	print_sched_domain(1);
+	//print_sched_domain(0);
+	//print_sched_domain(1);
 
 	if (smp_processor_id() == BALANCING_CPU)
 		balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
@@ -933,6 +932,9 @@ static int sched_balance(struct rq *rq)
 	struct sched_domain *top;
 
 	balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
+
+	if (!rq->sd)
+		return;
 	top = get_top_domain(smp_processor_id());
 
 	if (!top)
@@ -1256,10 +1258,7 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 	tdq->switchcnt = tdq->load;
 
 	/*if (rq->sd) {
-		print_sched_domain(0);
-		print_sched_domain(1);
-		print_sched_domain(2);
-		print_sched_domain(3);
+		print_sched_domain(smp_processor_id());
 	}*/
 
 	if (smp_processor_id() == BALANCING_CPU) {
@@ -1351,6 +1350,11 @@ static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int w
 	struct sched_domain *last_domain;
 	struct sched_domain *root_domain;
 	struct ktz_tdq *this_tdq;
+	struct rq *rq0;
+
+	rq0 = cpu_rq(0);
+	if (!rq0->sd)
+		return 0;
 
 	curr_cpu = task_cpu(p);
 	curr_tdq = TDQ(task_rq(p));
