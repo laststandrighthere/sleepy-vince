@@ -120,13 +120,13 @@ static uint32_t sched_random(void)
 
 static struct sched_domain *get_top_domain(int cpu)
 {
-	return rcu_dereference(per_cpu(sd_llc, cpu));
-	/*struct sched_domain *sd;
+	//return rcu_dereference(per_cpu(sd_llc, cpu));
+	struct sched_domain *sd;
 	struct sched_domain *top;
 	for_each_domain(cpu, sd) {
 		top = sd;
 	}
-	return top;*/
+	return top;
 }
 
 
