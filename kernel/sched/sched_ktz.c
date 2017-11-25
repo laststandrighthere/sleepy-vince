@@ -1391,8 +1391,13 @@ static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int w
 	/* Search globally for the less loaded CPU. */
 	if (cpu == -1)
 		cpu = sched_lowest(root_domain, &p->cpus_allowed, -1, INT_MAX, curr_cpu);
-	BUG_ON(cpu == -1);
 
+	if (cpu == -1) {
+		LOG("Can't find a CPU for task %d\n", p->pid);
+		LOG("allowed : %*pbl\n", cpumask_pr_args(&p->cpus_allowed));
+		LOG("root domain : %*pbl\n", cpumask_pr_args(sched_domain_span(root_domain)));
+		BUG();
+	}
 	/*
 	 * Compare the lowest loaded cpu to current cpu.
 	 */

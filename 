@@ -1,1 +1,0 @@
-kernel/sched/core.c build_sched_domains 7046 sd = build_sched_domain(tl, cpu_map, attr, sd, i);
