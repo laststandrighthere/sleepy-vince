@@ -1715,6 +1715,15 @@ struct task_struct {
  */
 };
 
+#ifdef CONFIG_SCHED_WALT
+extern int sched_set_boost(int enable);
+#else
+static inline int sched_set_boost(int enable)
+{
+	return 0;
+}
+#endif
+
 #ifdef CONFIG_ARCH_WANTS_DYNAMIC_TASK_STRUCT
 extern int arch_task_struct_size __read_mostly;
 #else
@@ -3161,6 +3170,9 @@ static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
 
 extern long sched_setaffinity(pid_t pid, const struct cpumask *new_mask);
 extern long sched_getaffinity(pid_t pid, struct cpumask *mask);
+
+#define SCHED_CPUFREQ_INTERCLUSTER_MIG (1U << 3)
+#define SCHED_CPUFREQ_PL (1U << 5)
 
 #ifdef CONFIG_CGROUP_SCHED
 extern struct task_group root_task_group;
