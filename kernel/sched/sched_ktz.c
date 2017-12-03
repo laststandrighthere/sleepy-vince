@@ -95,8 +95,7 @@ static int tickincr = 1 << SCHED_TICK_SHIFT;	/* 1 Should be correct. */
 static int sched_interact = SCHED_INTERACT_THRESH;
 static int sched_slice = 10;	/* reset during boot. */
 static int sched_slice_min = 1;	/* reset during boot. */
-//static int preempt_thresh = PRI_MIN_TIMESHARE;
-static int preempt_thresh = 0; /* Disable preemption for now. */
+static int preempt_thresh = 80;
 
 unsigned int sysctl_ktz_enabled = 1; /* Enabled by default */
 unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
