@@ -1400,12 +1400,12 @@ struct sched_ktz_entity {
 	int		cpu;	/* CPU that we have affinity for. NU */
 	int		rltick;	/* Real last tick, for affinity. NU */
 	int		slice;	/* Ticks of slice remaining. */
-	unsigned long	slptime;	/* Number of ticks we vol. slept */
+	unsigned long long	slptime;	/* Number of ticks we vol. slept */
 	unsigned long long	slptick;/* First tick of current sleep */
-	unsigned long	runtime;	/* Number of ticks we were running */
-	unsigned long		ltick;	/* Last tick that we were running on */
-	unsigned long		ftick;	/* First tick that we were running on */
-	unsigned long		ticks;	/* Tick count */
+	unsigned long long	runtime;	/* Number of ticks we were running */
+	unsigned long long		ltick;	/* Last tick that we were running on */
+	unsigned long long		ftick;	/* First tick that we were running on */
+	unsigned long long		ticks;	/* Tick count */
 	int		rqindex;	/* Index of the runq in the tdq. */
 #ifdef KTR
 	//char		ts_name[TS_NAME_LEN];

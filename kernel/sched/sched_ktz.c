@@ -2,7 +2,7 @@
 #include "sched.h"
 
 /* Custom message displayed when initializing the sched class. */
-#define KTZ_INIT_MESSAGE "STABLE KTZ VERSION"
+#define KTZ_INIT_MESSAGE ""
 
 /* Macros and defines. */
 /* Timeshare range = Whole range of this scheduler. */
@@ -39,12 +39,12 @@
 #define	SCHED_INTERACT_HALF	(SCHED_INTERACT_MAX / 2)
 #define	SCHED_INTERACT_THRESH	(30)
 
-#define roundup(x, y) 		((((x)+((y)-1))/(y))*(y))
+#define ktz_roundup(x, y) 		((((x)+((y)-1))/(y))*(y))
 #define	SCHED_TICK_HZ(ts)	((ts)->ticks >> SCHED_TICK_SHIFT)
-#define	SCHED_TICK_TOTAL(ts)	(max((ts)->ltick - (ts)->ftick, HZ))
+#define	SCHED_TICK_TOTAL(ts)	(max((ts)->ltick - (ts)->ftick, ((unsigned long long)HZ)))
 #define	SCHED_PRI_TICKS(ts)						\
     (SCHED_TICK_HZ((ts)) /						\
-    (roundup(SCHED_TICK_TOTAL((ts)), SCHED_PRI_RANGE) / SCHED_PRI_RANGE))
+    (ktz_roundup(SCHED_TICK_TOTAL((ts)), SCHED_PRI_RANGE) / SCHED_PRI_RANGE))
 #define	SCHED_SLP_RUN_FORK	((HZ / 2) << SCHED_TICK_SHIFT)
 
 /*
@@ -83,9 +83,6 @@ static int balance_interval = 128;	/* Default set in sched_initticks(). */
 unsigned int idle_stealing_cooldown = 500000UL;
 static int affinity = 100; /* TODO : check validity of this. */
 
-static unsigned long long last_balance = 0;
-
-
 /* Globals */
 static int tickincr = 1 << SCHED_TICK_SHIFT;	/* 1 Should be correct. */
 static int sched_interact = SCHED_INTERACT_THRESH;
@@ -105,7 +102,7 @@ unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 #define TDQ(rq)		(&(rq)->ktz)
 #define RQ(tdq)		(container_of(tdq, struct rq, ktz))
 
-static inline void print_loads(void);
+//static inline void print_loads(void);
 static uint32_t sched_random(void)
 {
 	int r;
@@ -136,30 +133,36 @@ struct cpu_search {
 	int	cs_load;
 };
 
-static int cpu_search(const struct sched_domain *cg, struct cpu_search *low, struct cpu_search *high, const int match);
+static int cpu_search(struct sched_domain *cg, struct cpu_search *low, struct cpu_search *high, const int match);
 
-inline int cpu_search_lowest(const struct sched_domain *cg, struct cpu_search *low)
+inline int cpu_search_lowest(struct sched_domain *cg, struct cpu_search *low)
 {
 	return cpu_search(cg, low, NULL, CPU_SEARCH_LOWEST);
 }
 
-inline int cpu_search_highest(const struct sched_domain *cg, struct cpu_search *high)
+inline int cpu_search_highest(struct sched_domain *cg, struct cpu_search *high)
 {
 	return cpu_search(cg, NULL, high, CPU_SEARCH_HIGHEST);
 }
 
-inline int cpu_search_both(const struct sched_domain *cg, struct cpu_search *low, struct cpu_search *high)
+inline int cpu_search_both(struct sched_domain *cg, struct cpu_search *low, struct cpu_search *high)
 {
 	return cpu_search(cg, low, high, CPU_SEARCH_BOTH);
 }
 
-int cpu_search(const struct sched_domain *cg, struct cpu_search *low, struct cpu_search *high, const int match)
+int cpu_search(struct sched_domain *cg, struct cpu_search *low, struct cpu_search *high, const int match)
 {
 	struct cpu_search lgroup;
 	struct cpu_search hgroup;
 	struct cpumask cpumask;
 	struct ktz_tdq *tdq;
-	int cpu, i, hload, lload, load, total, rnd;
+	int cpu, hload, lload, load, total, rnd;
+
+	/* Avoid warnings. */
+	hgroup.cs_cpu = -1;
+	lgroup.cs_cpu = -1;
+	lgroup.cs_load = INT_MAX;
+	hgroup.cs_load = INT_MIN;
 
 	total = 0;
 	BUG_ON(!cg);
@@ -226,7 +229,7 @@ int cpu_search(const struct sched_domain *cg, struct cpu_search *low, struct cpu
 	return (total);
 }
 
-static void print_groups(struct sched_domain *sd)
+/*static void print_groups(struct sched_domain *sd)
 {
 	struct sched_group *first = sd->groups;
 	struct sched_group *g;
@@ -242,9 +245,9 @@ static void print_groups(struct sched_domain *sd)
 		g = g->next;
 		i ++;
 	} while (g != first);
-}
+}*/
 
-static void print_sched_domain(int cpu)
+/*static void print_sched_domain(int cpu)
 {
 	struct sched_domain *sd;
 	LOG("Domains for CPU %d : ", cpu);
@@ -255,7 +258,7 @@ static void print_sched_domain(int cpu)
 		LOG("gr 0 : %p", sd->groups);
 	}
 	LOG("###################");
-}
+}*/
 
 void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 {
@@ -369,12 +372,12 @@ static int interact_score(struct task_struct *p)
 			return (SCHED_INTERACT_HALF);
 
 	if (ktz_se->runtime > ktz_se->slptime) {
-		div = max(1, ktz_se->runtime / SCHED_INTERACT_HALF);
+		div = max(1ULL, ktz_se->runtime / SCHED_INTERACT_HALF);
 		return (SCHED_INTERACT_HALF +
 		    (SCHED_INTERACT_HALF - (ktz_se->slptime / div)));
 	}
 	if (ktz_se->slptime > ktz_se->runtime) {
-		div = max(1, ktz_se->slptime / SCHED_INTERACT_HALF);
+		div = max(1ULL, ktz_se->slptime / SCHED_INTERACT_HALF);
 		return (ktz_se->runtime / div);
 	}
 	/* runtime == slptime */
@@ -466,7 +469,7 @@ static void compute_priority(struct task_struct *p)
 		pri = SCHED_PRI_MIN;
 		if (ktz_se->ticks) {
 			int d;
-			d = min(SCHED_PRI_TICKS(ktz_se), SCHED_PRI_RANGE - 1);
+			d = min(SCHED_PRI_TICKS(ktz_se), (unsigned long long)(SCHED_PRI_RANGE - 1));
 			if (d < 0) {
 				BUG();
 			}
@@ -680,8 +683,6 @@ static void attach_task(struct rq *rq, struct task_struct *p)
 
 static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, int prio)
 {
-	struct rq *rq = RQ(tdq);
-	struct sched_ktz_entity *ts = KTZ_SE(td);
 	int oldpri;
 
 	THREAD_LOCK_ASSERT(td, MA_OWNED);
@@ -706,7 +707,6 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 	 * information so other cpus are aware of our current priority.
 	 */
 	if (task_curr(td)) {
-		//tdq = TDQ_CPU(ts->ts_cpu); TODO : CAREFUL WITH SMP !
 		BUG_ON(tdq != TDQ(cpu_rq(td->cpu)));
 		oldpri = td->ktz_prio;
 		td->ktz_prio = prio;
@@ -766,7 +766,6 @@ static bool can_migrate(struct task_struct *p, int to_cpu)
 static struct task_struct *runq_steal_from(struct runq *rq, int dest_cpu, int start)
 {
 	unsigned long *status;
-	struct task_struct *first;
 	int bit;
 	int offset;
 	int size = KTZ_RUNQ_BITMAP_SIZE;
@@ -947,7 +946,7 @@ static int sched_balance(struct rq *rq)
  */ 
 static int tdq_idled(struct ktz_tdq *this_tdq)
 {
-	int this_cpu, victim_cpu, moved;
+	int this_cpu, victim_cpu;
 	unsigned long flags;
 	struct ktz_tdq *victim_tdq;
 	struct cpumask cpus;
@@ -1006,8 +1005,6 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 	return 0;
 }
 
-static struct task_struct *load_balance_ktz(struct rq *this_rq);
-
 static inline void print_stats(struct task_struct *p)
 {
 	struct sched_ktz_entity *kse = KTZ_SE(p);
@@ -1018,9 +1015,10 @@ static inline void print_stats(struct task_struct *p)
 	LOG("\t| slptime\t\t= %llu ms", st);
 	LOG("\t| runtime\t\t= %llu ms", rt);
 	LOG("\t| interact\t\t= %d", interact);
-	LOG("\t| ticks\t\t= %d", kse->ticks);
-	LOG("\t| lticks\t\t= %d", kse->ltick);
-	LOG("\t| fticks\t\t= %d", kse->ftick);
+	LOG("\t| ticks\t\t= %llu", kse->ticks);
+	LOG("\t| lticks\t\t= %llu", kse->ltick);
+	LOG("\t| fticks\t\t= %llu", kse->ftick);
+
 }
 
 
@@ -1082,7 +1080,7 @@ static inline void print_children(struct task_struct *p)
 	}
 }
 
-static inline void print_loads(void)
+/*static inline void print_loads(void)
 {
 	int cpu;
 	struct cpumask mask;
@@ -1094,20 +1092,19 @@ static inline void print_loads(void)
 		struct ktz_tdq *tdq = TDQ(rq);
 		if (smp_processor_id() != cpu)
 			raw_spin_lock_irqsave(&rq->lock, flags);
-		LOG("\t| Cpu %d, load = %d, nr_running = %llu\n", cpu, tdq->load, rq->nr_running);
+		LOG("\t| Cpu %d, load = %d, nr_running = %lu\n", cpu, tdq->load, rq->nr_running);
 		if (smp_processor_id() != cpu) {
 			raw_spin_unlock(&rq->lock);
 			local_irq_restore(flags);
 		}
 	}
 	LOG("##################\n");
-}
+}*/
 
 static void enqueue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct ktz_tdq *tdq = TDQ(rq);
 	struct sched_ktz_entity *ktz_se = KTZ_SE(p);
-	struct list_head *queue = &rq->ktz.queue;
 
 	add_nr_running(rq,1);
 	if (p->ktz_prio == 0)
@@ -1180,7 +1177,6 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 {
 	struct ktz_tdq *tdq = TDQ(rq);
 	struct task_struct *next_task;
-	int this_cpu = smp_processor_id();
 	int steal;
 	int again = 0;
 
@@ -1233,14 +1229,9 @@ static void set_curr_task_ktz(struct rq *rq)
 {
 }
 
-void check_balance(struct rq *rq, bool idle)
+void check_balance(struct rq *rq)
 {
 	if (balance_ticks && --balance_ticks == 0) {
-		if (idle)
-			LOG("Balance from Idle.");
-		unsigned long long p = sched_clock() - last_balance;
-		LOG("Balance period : %llu ms", p / 1000000);
-		last_balance = sched_clock();
 		sched_balance(rq);
 	}
 }
@@ -1258,7 +1249,7 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 	}*/
 
 	/*if (smp_processor_id() == BALANCING_CPU) {
-		check_balance(rq, false);
+		check_balance(rq);
 	}*/
 
 	/*
@@ -1290,7 +1281,6 @@ static void task_fork_ktz(struct task_struct *p)
 {
 	struct task_struct *child = p;
 	struct task_struct *parent = p->parent;
-	struct sched_ktz_entity *cktz_se = KTZ_SE(child);
 	struct sched_ktz_entity *pktz_se = KTZ_SE(parent);
 
 	/* Update parent stats. */
@@ -1414,74 +1404,6 @@ static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int w
 static void migrate_task_rq_ktz(struct task_struct *p)
 {
 }
-
-static struct task_struct *load_balance_ktz(struct rq *this_rq)
-{
-	int rcpu;
-	int best_cpu = -1;
-	int max_load = 0;
-	unsigned long flags;
-	int this_cpu;
-	struct rq *target_rq;
-	struct ktz_tdq *target_tdq;
-	struct task_struct *stolen;
-	struct rq *new_rq;
-
-	this_cpu = smp_processor_id();
-
-	/* Try to find the cpu having max load. Naive approach for now. */
-	for_each_cpu(rcpu, cpu_online_mask) {
-		struct rq *rem_rq = cpu_rq(rcpu);
-		struct ktz_tdq *rem_tdq = TDQ(rem_rq);
-
-		if (rcpu == this_cpu)
-			continue;
-
-		if (rem_tdq->load > 1 && rem_tdq->load > max_load) {
-			max_load = rem_tdq->load;
-			best_cpu = rcpu;
-		}
-	}
-
-	if (!max_load) {
-		/* Cannot steal, abort. */
-		return NULL;
-	}
-
-	target_rq = cpu_rq(best_cpu);
-	target_tdq = TDQ(target_rq);
-
-	/* Take a task from the target cpu. */
-	raw_spin_lock_irqsave(&target_rq->lock, flags);
-
-	if (target_tdq->load <= 1) {
-		raw_spin_unlock(&target_rq->lock);
-		local_irq_restore(flags);
-		return NULL;
-	}
-
-	stolen = tdq_choose(target_tdq, target_rq->curr);
-	BUG_ON(stolen == target_rq->curr);
-	if (stolen == NULL) {
-		raw_spin_unlock(&target_rq->lock);
-		local_irq_restore(flags);
-		return NULL;
-	}
-
-	BUG_ON(task_running(target_rq, stolen));
-
-	if (!cpumask_test_cpu(this_cpu, tsk_cpus_allowed(stolen))) {
-		raw_spin_unlock(&target_rq->lock);
-		local_irq_restore(flags);
-		return NULL;
-	}
-	detach_task(target_rq, stolen, this_cpu);
-	raw_spin_unlock(&target_rq->lock);
-	attach_task(this_rq, stolen);
-	local_irq_restore(flags);
-	return stolen;
-}
-
 #endif
 
 static void update_curr_ktz(struct rq*rq)
