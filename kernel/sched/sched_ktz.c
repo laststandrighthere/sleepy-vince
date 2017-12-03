@@ -1,12 +1,8 @@
 #include <linux/random.h>
 #include "sched.h"
 
-/*
- * Changes:
- * 	_ DROP everything related to fork.
- * 	_ DROP burrowing etc...
- * 	_ Simplify preemption.
- */
+/* Custom message displayed when initializing the sched class. */
+#define KTZ_INIT_MESSAGE "STABLE KTZ VERSION"
 
 /* Macros and defines. */
 /* Timeshare range = Whole range of this scheduler. */
@@ -269,6 +265,9 @@ void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 	runq_init(&ktz_tdq->realtime);
 	runq_init(&ktz_tdq->timeshare);
 	runq_init(&ktz_tdq->idle);
+
+	/* Print init message. */
+	printk_deferred("||| %s |||\n", KTZ_INIT_MESSAGE);
 	
 	/* Print config. */
 	PRINT(tickincr);
@@ -285,9 +284,6 @@ void init_ktz_tdq(struct ktz_tdq *ktz_tdq)
 	PRINT(SCHED_PRI_MIN);
 	PRINT(SCHED_PRI_MAX);
 	PRINT(SCHED_PRI_RANGE);
-
-	//print_sched_domain(0);
-	//print_sched_domain(1);
 
 	if (smp_processor_id() == BALANCING_CPU)
 		balance_ticks = max(balance_interval / 2, 1) + (sched_random() % balance_interval);
