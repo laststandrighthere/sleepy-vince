@@ -353,7 +353,7 @@ void tas2557_enableIRQ(struct tas2557_priv *pTAS2557, bool enable, bool startup_
 		}
 	} else {
 		if (gpio_is_valid(pTAS2557->mnGpioINT))
-		disable_irq_nosync(pTAS2557->mnIRQ);
+			disable_irq_nosync(pTAS2557->mnIRQ);
 		pTAS2557->mbIRQEnable = false;
 	}
 }
@@ -391,10 +391,9 @@ static void irq_work_routine(struct work_struct *work)
 	mutex_lock(&pTAS2557->file_lock);
 #endif
 
-#ifdef I2C_RESTART
 	if (pTAS2557->mnErrCode == ERROR_FAILSAFE)
 		goto program;
-#endif
+
 	if (pTAS2557->mbRuntimeSuspend) {
 		dev_info(pTAS2557->dev, "%s, Runtime Suspended\n", __func__);
 		goto end;
@@ -769,10 +768,7 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 	pTAS2557->hw_reset = tas2557_hw_reset;
 	pTAS2557->runtime_suspend = tas2557_runtime_suspend;
 	pTAS2557->runtime_resume = tas2557_runtime_resume;
-
-#ifdef I2C_RESTART
 	pTAS2557->mnRestart = 0;
-#endif
 	mutex_init(&pTAS2557->dev_lock);
 
 	/* Reset the chip */
