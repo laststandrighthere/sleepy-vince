@@ -48,7 +48,7 @@
 #define	PPC_DRIVER_CFGDEV_NONCRC	0x00000101
 
 #define TAS2557_CAL_NAME    "/persist/spkr_calibration.bin"
-
+#define RESTART_MAX 3
 
 static int tas2557_load_calibration(struct tas2557_priv *pTAS2557,
 	char *pFileName);
@@ -296,16 +296,15 @@ static void failsafe(struct tas2557_priv *pTAS2557)
 	pTAS2557->mnErrCode |= ERROR_FAILSAFE;
 	if (hrtimer_active(&pTAS2557->mtimer))
 		hrtimer_cancel(&pTAS2557->mtimer);
-#ifdef I2C_RESTART
-	if (pTAS2557->mnRestart < 3)
-		{
+
+	if (pTAS2557->mnRestart < RESTART_MAX) {
 		pTAS2557->mnRestart ++;
 		msleep(100);
 		dev_err(pTAS2557->dev, "I2C COMM error, restart SmartAmp.\n");
 		schedule_delayed_work(&pTAS2557->irq_work, msecs_to_jiffies(100));
 		return;
 	}
-#endif
+
 	pTAS2557->enableIRQ(pTAS2557, false, false);
 	tas2557_dev_load_data(pTAS2557, p_tas2557_shutdown_data);
 	pTAS2557->mbPowerUp = false;
@@ -466,6 +465,8 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 	if ((nValue&0xff) != TAS2557_SAFE_GUARD_PATTERN) {
 		dev_err(pTAS2557->dev, "ERROR safe guard failure!\n");
 		nResult = -EPIPE;
+		pTAS2557->mnErrCode = ERROR_SAFE_GUARD;
+		pTAS2557->mbPowerUp = true;
 		goto end;
 	}
 
@@ -509,6 +510,7 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 				}
 			}
 			pTAS2557->mbPowerUp = true;
+			pTAS2557->mnRestart = 0;
 		}
 	} else {
 		if (pTAS2557->mbPowerUp) {
@@ -525,6 +527,7 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 				goto end;
 
 			pTAS2557->mbPowerUp = false;
+			pTAS2557->mnRestart = 0;
 		}
 	}
 
@@ -532,7 +535,8 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 
 end:
 	if (nResult < 0) {
-		if (pTAS2557->mnErrCode & (ERROR_DEVA_I2C_COMM | ERROR_PRAM_CRCCHK | ERROR_YRAM_CRCCHK))
+		if (pTAS2557->mnErrCode & (ERROR_DEVA_I2C_COMM | ERROR_PRAM_CRCCHK
+				| ERROR_YRAM_CRCCHK | ERROR_SAFE_GUARD))
 			failsafe(pTAS2557);
 	}
 
