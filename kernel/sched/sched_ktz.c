@@ -2,7 +2,7 @@
 #include "sched.h"
 
 /* Custom message displayed when initializing the sched class. */
-#define KTZ_INIT_MESSAGE ""
+#define KTZ_INIT_MESSAGE "STABLE NO PERIODIC LB"
 
 /* Macros and defines. */
 /* Timeshare range = Whole range of this scheduler. */
@@ -89,6 +89,7 @@ static int sched_interact = SCHED_INTERACT_THRESH;
 static int sched_slice = 10;	/* reset during boot. */
 static int sched_slice_min = 1;	/* reset during boot. */
 static int preempt_thresh = 80;
+static int periodic_balance = 0;
 
 unsigned int sysctl_ktz_enabled = 1; /* Enabled by default */
 unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
@@ -110,6 +111,7 @@ static uint32_t sched_random(void)
 	return r;
 }
 
+#ifdef CONFIG_SMP
 static struct sched_domain *get_top_domain(int cpu)
 {
 	struct sched_domain *curr = rcu_dereference(per_cpu(sd_llc, cpu));
@@ -228,6 +230,7 @@ int cpu_search(struct sched_domain *cg, struct cpu_search *low, struct cpu_searc
 	}
 	return (total);
 }
+#endif
 
 /*static void print_groups(struct sched_domain *sd)
 {
@@ -663,6 +666,7 @@ static void tdq_setlowpri(struct ktz_tdq *tdq, struct task_struct *ctd)
 		tdq->lowpri = td->ktz_prio;
 }
 
+#ifdef CONFIG_SMP
 static void detach_task(struct rq *src_rq, struct task_struct *p, int dest_cpu)
 {
 	p->on_rq = TASK_ON_RQ_MIGRATING;
@@ -1004,6 +1008,7 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 	/* Failed to steal. */
 	return 0;
 }
+#endif /* CONFIG_SMP */
 
 static inline void print_stats(struct task_struct *p)
 {
@@ -1188,6 +1193,7 @@ redo:
 		return next_task;
 	}
 	else {
+#ifdef CONFIG_SMP
 		BUG_ON(again);
 
 		rq->idle_stamp = rq_clock(rq);
@@ -1210,6 +1216,9 @@ redo:
 		else {
 			return NULL;	
 		}
+#else	/* !CONFIG_SMP */
+		return NULL;
+#endif
 	}
 }
 
@@ -1231,7 +1240,7 @@ static void set_curr_task_ktz(struct rq *rq)
 
 void check_balance(struct rq *rq)
 {
-	if (balance_ticks && --balance_ticks == 0) {
+	if (periodic_balance && balance_ticks && --balance_ticks == 0) {
 		sched_balance(rq);
 	}
 }
@@ -1244,13 +1253,9 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 	tdq->oldswitchcnt = tdq->switchcnt;
 	tdq->switchcnt = tdq->load;
 
-	/*if (rq->sd) {
-		print_sched_domain(smp_processor_id());
-	}*/
-
-	/*if (smp_processor_id() == BALANCING_CPU) {
+	if (smp_processor_id() == BALANCING_CPU) {
 		check_balance(rq);
-	}*/
+	}
 
 	/*
 	 * Advance the insert index once for each tick to ensure that all
