@@ -666,25 +666,6 @@ static void tdq_setlowpri(struct ktz_tdq *tdq, struct task_struct *ctd)
 		tdq->lowpri = td->ktz_prio;
 }
 
-#ifdef CONFIG_SMP
-static void detach_task(struct rq *src_rq, struct task_struct *p, int dest_cpu)
-{
-	p->on_rq = TASK_ON_RQ_MIGRATING;
-	deactivate_task(src_rq, p, 0);
-	set_task_cpu(p, dest_cpu);
-}
-
-static void attach_task(struct rq *rq, struct task_struct *p)
-{
-	lockdep_assert_held(&rq->lock);
-
-	BUG_ON(task_rq(p) != rq);
-	activate_task(rq, p, 0);
-	p->on_rq = TASK_ON_RQ_QUEUED;
-	check_preempt_curr(rq, p, 0);
-}
-
-
 static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, int prio)
 {
 	int oldpri;
@@ -711,7 +692,6 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 	 * information so other cpus are aware of our current priority.
 	 */
 	if (task_curr(td)) {
-		BUG_ON(tdq != TDQ(cpu_rq(td->cpu)));
 		oldpri = td->ktz_prio;
 		td->ktz_prio = prio;
 		if (prio < tdq->lowpri)
@@ -721,6 +701,24 @@ static void sched_thread_priority(struct ktz_tdq *tdq, struct task_struct *td, i
 		return;
 	}
 	td->ktz_prio = prio;
+}
+
+#ifdef CONFIG_SMP
+static void detach_task(struct rq *src_rq, struct task_struct *p, int dest_cpu)
+{
+	p->on_rq = TASK_ON_RQ_MIGRATING;
+	deactivate_task(src_rq, p, 0);
+	set_task_cpu(p, dest_cpu);
+}
+
+static void attach_task(struct rq *rq, struct task_struct *p)
+{
+	lockdep_assert_held(&rq->lock);
+
+	BUG_ON(task_rq(p) != rq);
+	activate_task(rq, p, 0);
+	p->on_rq = TASK_ON_RQ_QUEUED;
+	check_preempt_curr(rq, p, 0);
 }
 
 static inline int sched_highest(struct sched_domain *sd, struct cpumask *mask, int minload)
@@ -1182,13 +1180,17 @@ static struct task_struct *pick_next_task_ktz(struct rq *rq, struct task_struct*
 {
 	struct ktz_tdq *tdq = TDQ(rq);
 	struct task_struct *next_task;
+#ifdef CONFIG_SMP
 	int steal;
 	int again = 0;
+#endif
 
 	put_prev_task(rq, prev);
 redo:
 	if (tdq->load) {
+#ifdef CONFIG_SMP
 		rq->idle_stamp = 0;
+#endif
 		next_task = tdq_choose(tdq, NULL);
 		return next_task;
 	}
@@ -1238,12 +1240,14 @@ static void set_curr_task_ktz(struct rq *rq)
 {
 }
 
-void check_balance(struct rq *rq)
+#ifdef CONFIG_SMP
+static void check_balance(struct rq *rq)
 {
 	if (periodic_balance && balance_ticks && --balance_ticks == 0) {
 		sched_balance(rq);
 	}
 }
+#endif
 
 static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 {
@@ -1253,9 +1257,11 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 	tdq->oldswitchcnt = tdq->switchcnt;
 	tdq->switchcnt = tdq->load;
 
+#ifdef CONFIG_SMP
 	if (smp_processor_id() == BALANCING_CPU) {
 		check_balance(rq);
 	}
+#endif
 
 	/*
 	 * Advance the insert index once for each tick to ensure that all
