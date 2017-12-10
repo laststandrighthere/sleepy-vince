@@ -1119,6 +1119,8 @@ static void enqueue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 		interact_update(p);
 		pctcpu_update(ktz_se, false);
 	}
+	/* Update prio before putting into runq. */
+	compute_priority(p);
 	ktz_se->slice = 0;
 	tdq_add(tdq, p, 0);
 }
