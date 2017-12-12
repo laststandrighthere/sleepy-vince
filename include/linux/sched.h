@@ -1059,8 +1059,11 @@ struct sched_dl_entity {
 	 * has not been executed yet. This flag is useful to avoid race
 	 * conditions between the inactive timer handler and the wakeup
 	 * code.
+	 *
+	 * @dl_overrun tells if the task asked to be informed about runtime
+	 * overruns.
 	 */
-	int dl_throttled, dl_boosted, dl_yielded, dl_non_contending;
+	int dl_throttled, dl_boosted, dl_yielded, dl_non_contending, dl_overrun;
 
 	/*
 	 * Bandwidth enforcement timer. Each -deadline task has its
