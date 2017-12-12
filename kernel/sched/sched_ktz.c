@@ -1,4 +1,5 @@
 #include <linux/random.h>
+#include <trace/events/sched.h>
 #include "sched.h"
 
 /* Custom message displayed when initializing the sched class. */
@@ -370,9 +371,9 @@ static int interact_score(struct task_struct *p)
 	 * task.  Don't go through the expense of computing it if there's
 	 * no chance.
 	 */
-	if (sched_interact <= SCHED_INTERACT_HALF &&
+	/*if (sched_interact <= SCHED_INTERACT_HALF &&
 		ktz_se->runtime >= ktz_se->slptime)
-			return (SCHED_INTERACT_HALF);
+			return (SCHED_INTERACT_HALF);*/
 
 	if (ktz_se->runtime > ktz_se->slptime) {
 		div = max(1ULL, ktz_se->runtime / SCHED_INTERACT_HALF);
@@ -448,6 +449,7 @@ static inline int compute_slice(struct ktz_tdq *tdq)
 static void compute_priority(struct task_struct *p)
 {
 	int score;
+	int inter;
 	int pri;
 	struct sched_ktz_entity *ktz_se = KTZ_SE(p);
 
@@ -464,7 +466,8 @@ static void compute_priority(struct task_struct *p)
 	 * score.  Negative nice values make it easier for a thread to be
 	 * considered interactive.
 	 */
-	score = max(0, interact_score(p) + task_nice(p));
+	inter = interact_score(p);
+	score = max(0, inter + task_nice(p));
 	if (score < sched_interact) {
 		pri = PRI_MIN_INTERACT;
 		pri += ((PRI_MAX_INTERACT - PRI_MIN_INTERACT + 1) / sched_interact) * score;
@@ -1083,6 +1086,15 @@ static inline void print_children(struct task_struct *p)
 	}
 }
 
+static inline void trace_inter(struct task_struct *p)
+{
+	int inter, score;
+
+	inter = interact_score(p);
+	score = max(0, inter + task_nice(p));
+	trace_sched_interactivity(inter, score, p->ktz_prio);
+}
+
 /*static inline void print_loads(void)
 {
 	int cpu;
@@ -1123,6 +1135,7 @@ static void enqueue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 	compute_priority(p);
 	ktz_se->slice = 0;
 	tdq_add(tdq, p, 0);
+	trace_inter(p);
 }
 
 static void dequeue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
@@ -1142,6 +1155,7 @@ static void dequeue_task_ktz(struct rq *rq, struct task_struct *p, int flags)
 	tdq_load_rem(tdq, p);
 	if (p->ktz_prio == tdq->lowpri)
 		tdq_setlowpri(tdq, NULL);
+	trace_inter(p);
 }
 
 static void yield_task_ktz(struct rq *rq)
@@ -1282,6 +1296,7 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 	ktz_se->runtime += tickincr;
 	interact_update(curr);
 	compute_priority(curr);
+	trace_inter(curr);
 
 	if (!TD_IS_IDLETHREAD(curr) && ++ktz_se->slice >= compute_slice(tdq)) {
 		ktz_se->slice = 0;

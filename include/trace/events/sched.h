@@ -8,6 +8,27 @@
 #include <linux/tracepoint.h>
 #include <linux/binfmts.h>
 
+TRACE_EVENT(sched_interactivity,
+
+	TP_PROTO(int interactivity, int score, int prio),
+
+	TP_ARGS(interactivity, score, prio),
+
+	TP_STRUCT__entry(
+		__field(        int,    interactivity                     )
+		__field(        int,    score                     )
+		__field(        int,    prio                     )
+		),
+
+	TP_fast_assign(
+		__entry->interactivity            = interactivity;
+		__entry->score			= score;
+		__entry->prio            = prio;
+		),
+
+	TP_printk("interactivity=%d score=%d prio=%d", __entry->interactivity, __entry->score, __entry->prio)
+);
+
 /*
  * Tracepoint for calling kthread_stop, performed to end a kthread:
  */
