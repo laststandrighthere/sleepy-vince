@@ -10,23 +10,27 @@
 
 TRACE_EVENT(sched_interactivity,
 
-	TP_PROTO(int interactivity, int score, int prio),
+	TP_PROTO(struct task_struct *p, int interactivity, int score),
 
-	TP_ARGS(interactivity, score, prio),
+	TP_ARGS(p, interactivity, score),
 
 	TP_STRUCT__entry(
+		__array(	char,	comm,	TASK_COMM_LEN	)
 		__field(        int,    interactivity                     )
 		__field(        int,    score                     )
 		__field(        int,    prio                     )
+		__field(        int,    pid                     )
 		),
 
 	TP_fast_assign(
+		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
 		__entry->interactivity            = interactivity;
 		__entry->score			= score;
-		__entry->prio            = prio;
+		__entry->prio            = p->ktz_prio;
+		__entry->pid            = p->pid;
 		),
 
-	TP_printk("interactivity=%d score=%d prio=%d", __entry->interactivity, __entry->score, __entry->prio)
+	TP_printk("comm=%s pid=%d interactivity=%d score=%d prio=%d", __entry->comm, __entry->pid, __entry->interactivity, __entry->score, __entry->prio)
 );
 
 /*

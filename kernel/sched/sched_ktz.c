@@ -1092,7 +1092,7 @@ static inline void trace_inter(struct task_struct *p)
 
 	inter = interact_score(p);
 	score = max(0, inter + task_nice(p));
-	trace_sched_interactivity(inter, score, p->ktz_prio);
+	trace_sched_interactivity(p, inter, score);
 }
 
 /*static inline void print_loads(void)
