@@ -9,7 +9,6 @@
 #include <linux/binfmts.h>
 
 TRACE_EVENT(sched_interactivity,
-
 	TP_PROTO(struct task_struct *p, int interactivity, int score),
 
 	TP_ARGS(p, interactivity, score),
@@ -31,6 +30,20 @@ TRACE_EVENT(sched_interactivity,
 		),
 
 	TP_printk("comm=%s pid=%d interactivity=%d score=%d prio=%d", __entry->comm, __entry->pid, __entry->interactivity, __entry->score, __entry->prio)
+);
+
+TRACE_EVENT(sched_load_changed,
+	TP_PROTO(int load),
+	TP_ARGS(load),
+	TP_STRUCT__entry(
+		__field(int, load)
+	),
+
+	TP_fast_assign(
+		__entry->load = load;
+	),
+
+	TP_printk("load=%d", __entry->load)
 );
 
 /*

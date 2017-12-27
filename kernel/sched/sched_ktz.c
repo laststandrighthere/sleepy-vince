@@ -104,6 +104,12 @@ unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 #define TDQ(rq)		(&(rq)->ktz)
 #define RQ(tdq)		(container_of(tdq, struct rq, ktz))
 
+static inline void trace_load(struct ktz_tdq *tdq)
+{
+	trace_sched_load_changed(tdq->load);
+}
+
+
 //static inline void print_loads(void);
 static uint32_t sched_random(void)
 {
@@ -407,6 +413,7 @@ static void tdq_load_add(struct ktz_tdq *tdq, struct task_struct *p)
 	tdq->load++;
 	//if ((td->td_flags & TDF_NOLOAD) == 0) /* We probably dont care. */
 	tdq->sysload++;
+	trace_load(tdq);
 }
 
 /*
@@ -422,6 +429,7 @@ tdq_load_rem(struct ktz_tdq *tdq, struct task_struct *p)
 	tdq->load--;
 	//if ((td->td_flags & TDF_NOLOAD) == 0) /* We probably dont care. */
 	tdq->sysload--;
+	trace_load(tdq);
 }
 
 /*
