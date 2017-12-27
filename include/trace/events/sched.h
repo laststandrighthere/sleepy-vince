@@ -33,17 +33,19 @@ TRACE_EVENT(sched_interactivity,
 );
 
 TRACE_EVENT(sched_load_changed,
-	TP_PROTO(int load),
-	TP_ARGS(load),
+	TP_PROTO(int cpu, int load),
+	TP_ARGS(cpu, load),
 	TP_STRUCT__entry(
+		__field(int, cpu)
 		__field(int, load)
 	),
 
 	TP_fast_assign(
+		__entry->cpu = cpu;
 		__entry->load = load;
 	),
 
-	TP_printk("load=%d", __entry->load)
+	TP_printk("cpu=%d load=%d", __entry->cpu, __entry->load)
 );
 
 /*

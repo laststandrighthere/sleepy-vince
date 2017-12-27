@@ -106,7 +106,8 @@ unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 
 static inline void trace_load(struct ktz_tdq *tdq)
 {
-	trace_sched_load_changed(tdq->load);
+	struct rq *rq = RQ(tdq);
+	trace_sched_load_changed(rq->cpu, tdq->load);
 }
 
 
