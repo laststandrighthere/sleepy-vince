@@ -901,14 +901,20 @@ static int sched_balance_group(struct sched_domain *sd)
 		if (high == -1)
 			break;
 		tdq_high = TDQ(cpu_rq(high));
-		cpumask_clear_cpu(high, &hmask);
+		//cpumask_clear_cpu(high, &hmask);
 		cpumask_copy(&lmask, &hmask);
+		cpumask_clear_cpu(high, &lmask);
 		/* Stop if there is no more CPU left for low. */
 		if (cpumask_empty(&lmask))
 			break;
 		anylow = 1;
 nextlow:
+		if (cpumask_empty(&lmask)) {
+			cpumask_clear_cpu(high, &hmask);
+			continue;
+		}
 		low = sched_lowest(sd, &lmask, -1, tdq_high->load - 1, high);
+		BUG_ON(low == high);
 		/* Stop if we looked well and found no less loaded CPU. */
 		if (anylow && low == -1)
 			break;
