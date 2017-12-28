@@ -48,6 +48,20 @@ TRACE_EVENT(sched_load_changed,
 	TP_printk("cpu=%d load=%d", __entry->cpu, __entry->load)
 );
 
+TRACE_EVENT(sched_plb,
+	TP_PROTO(unsigned long long time),
+	TP_ARGS(time),
+	TP_STRUCT__entry(
+		__field(unsigned long long, time)
+	),
+
+	TP_fast_assign(
+		__entry->time = time;
+	),
+
+	TP_printk("time=%llu", __entry->time)
+);
+
 /*
  * Tracepoint for calling kthread_stop, performed to end a kthread:
  */

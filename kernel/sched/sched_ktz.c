@@ -3,7 +3,7 @@
 #include "sched.h"
 
 /* Custom message displayed when initializing the sched class. */
-#define KTZ_INIT_MESSAGE "STABLE NO PERIODIC LB"
+#define KTZ_INIT_MESSAGE "STABLE WITH PERIODIC LB"
 
 /* Macros and defines. */
 /* Timeshare range = Whole range of this scheduler. */
@@ -90,7 +90,7 @@ static int sched_interact = SCHED_INTERACT_THRESH;
 static int sched_slice = 10;	/* reset during boot. */
 static int sched_slice_min = 1;	/* reset during boot. */
 static int preempt_thresh = 80;
-static int periodic_balance = 0;
+static int periodic_balance = 1;
 
 unsigned int sysctl_ktz_enabled = 1; /* Enabled by default */
 unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
@@ -935,6 +935,11 @@ nextlow:
 	return moved;
 }
 
+static void trace_plb(void)
+{
+	trace_sched_plb(jiffies);
+}
+
 static int sched_balance(struct rq *rq)
 {
 	int moved;
@@ -948,6 +953,8 @@ static int sched_balance(struct rq *rq)
 
 	if (!top)
 		return 0;
+
+	trace_plb();
 
 	raw_spin_unlock(&rq->lock);
 	moved = sched_balance_group(top);
