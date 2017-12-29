@@ -1376,6 +1376,12 @@ static unsigned int get_rr_interval_ktz(struct rq* rq, struct task_struct *p)
 {
 	return 0;
 }
+
+static void trace_strq(struct task_struct *p, int idx)
+{
+	trace_sched_strq(p, idx);
+}
+
 #ifdef CONFIG_SMP
 static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int wake_flags)
 {
@@ -1389,8 +1395,10 @@ static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int w
 	struct rq *rq0;
 
 	rq0 = cpu_rq(0);
-	if (!rq0->sd)
+	if (!rq0->sd) {
+		trace_strq(p, 0);
 		return 0;
+	}
 
 	curr_cpu = task_cpu(p);
 	curr_tdq = TDQ(task_rq(p));
@@ -1406,6 +1414,7 @@ static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int w
 	 */
 	if (cpumask_test_cpu(curr_cpu, &p->cpus_allowed) &&
 	   (curr_tdq->load == 0 || SCHED_AFFINITY(ktz_se, CG_SHARE_L2))) {
+		trace_strq(p, 1);
 		return curr_cpu;
 	}
 
@@ -1445,7 +1454,11 @@ static int select_task_rq_ktz(struct task_struct *p, int cpu, int sd_flag, int w
 	    this_tdq->lowpri > pri &&
 	    curr_tdq->load &&
 	    this_tdq->load <= curr_tdq->load + 1) {
+		trace_strq(p, 2);
 		cpu = this_cpu;
+	}
+	else {
+		trace_strq(p, 3);
 	}
 
 	return cpu;

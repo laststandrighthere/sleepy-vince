@@ -62,6 +62,28 @@ TRACE_EVENT(sched_plb,
 	TP_printk("time=%llu", __entry->time)
 );
 
+TRACE_EVENT(sched_strq,
+
+	TP_PROTO(struct task_struct *child, int idx),
+
+	TP_ARGS(child, idx),
+
+	TP_STRUCT__entry(
+		__array(	char,	child_comm,	TASK_COMM_LEN	)
+		__field(	pid_t,	child_pid			)
+		__field(	int,	idx				)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->child_comm, child->comm, TASK_COMM_LEN);
+		__entry->child_pid	= child->pid;
+		__entry->idx		= idx;
+	),
+
+	TP_printk("comm=%s pid=%d idx=%d",
+		__entry->child_comm, __entry->child_pid, __entry->idx)
+);
+
 /*
  * Tracepoint for calling kthread_stop, performed to end a kthread:
  */
@@ -328,6 +350,8 @@ TRACE_EVENT(sched_process_fork,
 		__field(	pid_t,	parent_pid			)
 		__array(	char,	child_comm,	TASK_COMM_LEN	)
 		__field(	pid_t,	child_pid			)
+		__field(	unsigned long*, cpus		)
+		__array(	char,	cpus_str,	32	)
 	),
 
 	TP_fast_assign(
@@ -335,11 +359,13 @@ TRACE_EVENT(sched_process_fork,
 		__entry->parent_pid	= parent->pid;
 		memcpy(__entry->child_comm, child->comm, TASK_COMM_LEN);
 		__entry->child_pid	= child->pid;
+		__entry->cpus = tsk_cpus_allowed(child)->bits;
+		snprintf(__entry->cpus_str, 32, "%*pbl", cpumask_pr_args(tsk_cpus_allowed(child)));
 	),
 
-	TP_printk("comm=%s pid=%d child_comm=%s child_pid=%d",
+	TP_printk("comm=%s pid=%d child_comm=%s child_pid=%d child_cpus=%s",
 		__entry->parent_comm, __entry->parent_pid,
-		__entry->child_comm, __entry->child_pid)
+		__entry->child_comm, __entry->child_pid, __entry->cpus_str)
 );
 
 /*
