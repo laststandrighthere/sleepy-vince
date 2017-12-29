@@ -3,7 +3,7 @@
 #include "sched.h"
 
 /* Custom message displayed when initializing the sched class. */
-#define KTZ_INIT_MESSAGE "STABLE WITH PERIODIC LB"
+#define KTZ_INIT_MESSAGE "STABLE WITH **EXPERIMENTAL** PLB"
 
 /* Macros and defines. */
 /* Timeshare range = Whole range of this scheduler. */
