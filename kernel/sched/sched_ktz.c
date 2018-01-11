@@ -3,7 +3,7 @@
 #include "sched.h"
 
 /* Custom message displayed when initializing the sched class. */
-#define KTZ_INIT_MESSAGE "STABLE WITH **EXPERIMENTAL** PLB"
+#define KTZ_INIT_MESSAGE "STABLE WITH ORIGINAL PLB + fixed random"
 
 /* Macros and defines. */
 /* Timeshare range = Whole range of this scheduler. */
@@ -104,6 +104,10 @@ unsigned int sysctl_ktz_forced_timeslice = 0; /* Force the value of a slice.
 #define TDQ(rq)		(&(rq)->ktz)
 #define RQ(tdq)		(container_of(tdq, struct rq, ktz))
 
+/* Per cpu variables. */
+DECLARE_PER_CPU(uint32_t, randomval);
+DEFINE_PER_CPU(uint32_t, randomval);
+
 static inline void trace_load(struct ktz_tdq *tdq)
 {
 	struct rq *rq = RQ(tdq);
@@ -111,12 +115,19 @@ static inline void trace_load(struct ktz_tdq *tdq)
 }
 
 
-//static inline void print_loads(void);
+/**
+ *  As defined in BSD
+ */
 static uint32_t sched_random(void)
 {
-	int r;
-	get_random_bytes(&r, sizeof(r));
-	return r;
+	uint32_t *rnd = &get_cpu_var(randomval);
+	uint32_t res;
+
+	*rnd = *rnd * 69069 + 5;
+	res = *rnd >> 16;
+	put_cpu_var(randomval);
+
+	return *rnd >> 16;
 }
 
 #ifdef CONFIG_SMP
@@ -884,7 +895,10 @@ static int sched_balance_pair(struct ktz_tdq *high, struct ktz_tdq *low)
 	}
 }
 
-static int sched_balance_group(struct sched_domain *sd)
+/*
+ * Fixed version that can migrate multiple threads from the same cpu.
+ */
+static int sched_balance_group_fixed(struct sched_domain *sd)
 {
 	struct cpumask hmask, lmask; 
 	int high, low, anylow, moved;
@@ -915,6 +929,61 @@ nextlow:
 		}
 		low = sched_lowest(sd, &lmask, -1, tdq_high->load - 1, high);
 		BUG_ON(low == high);
+		/* Stop if we looked well and found no less loaded CPU. */
+		if (anylow && low == -1)
+			break;
+		/* Go to next high if we found no less loaded CPU. */
+		if (low == -1)
+			continue;
+		tdq_low = TDQ(cpu_rq(low));
+		/* Transfer thread from high to low. */
+		if (sched_balance_pair(tdq_high, tdq_low)) {
+			/* CPU that got thread can no longer be a donor. */
+			cpumask_clear_cpu(low, &hmask);
+			moved ++;
+		} else {
+			/*
+			 * If failed, then there is no threads on high
+			 * that can run on this low. Drop low from low
+			 * mask and look for different one.
+			 */
+			cpumask_clear_cpu(low, &lmask);
+			anylow = 0;
+			goto nextlow;
+		}
+	}
+	return moved;
+}
+
+/*
+ * BSD version.
+ */
+static int sched_balance_group(struct sched_domain *sd)
+{
+	struct cpumask hmask, lmask; 
+	int high, low, anylow, moved;
+	struct ktz_tdq *tdq_high;
+	struct ktz_tdq *tdq_low;
+
+	cpumask_setall(&hmask);
+	(void) cpumask_and(&hmask, &hmask, cpu_online_mask);
+	moved = 0;
+
+	for (;;) {
+		high = sched_highest(sd, &hmask, 1);
+		/* Stop if there is no more CPU with transferrable threads. */
+		if (high == -1)
+			break;
+		tdq_high = TDQ(cpu_rq(high));
+		cpumask_clear_cpu(high, &hmask);
+		cpumask_copy(&lmask, &hmask);
+
+		/* Stop if there is no more CPU left for low. */
+		if (cpumask_empty(&lmask))
+			break;
+		anylow = 1;
+nextlow:
+		low = sched_lowest(sd, &lmask, -1, tdq_high->load - 1, high);
 		/* Stop if we looked well and found no less loaded CPU. */
 		if (anylow && low == -1)
 			break;
