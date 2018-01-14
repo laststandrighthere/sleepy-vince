@@ -83,6 +83,7 @@ static int balance_ticks;
 static int balance_interval = 128;	/* Default set in sched_initticks(). */
 unsigned int idle_stealing_cooldown = 500000UL;
 static int affinity = 100; /* TODO : check validity of this. */
+static int steal_thresh = 2;
 
 /* Globals */
 static int tickincr = 1 << SCHED_TICK_SHIFT;	/* 1 Should be correct. */
@@ -1064,7 +1065,7 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 		if (this_tdq->load)
 			return 0;
 
-		victim_cpu = sched_highest(sd, &cpus, 1);
+		victim_cpu = sched_highest(sd, &cpus, steal_thresh);
 		if (victim_cpu == -1)
 			continue;
 
