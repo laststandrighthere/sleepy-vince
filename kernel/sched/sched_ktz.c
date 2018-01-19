@@ -112,7 +112,7 @@ DEFINE_PER_CPU(uint32_t, randomval);
 static inline void trace_load(struct ktz_tdq *tdq)
 {
 	struct rq *rq = RQ(tdq);
-	trace_sched_load_changed(rq->cpu, tdq->load);
+	trace_sched_load_changed(rq->cpu, rq->nr_running);
 }
 
 
@@ -1369,6 +1369,7 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 	if (smp_processor_id() == BALANCING_CPU) {
 		check_balance(rq);
 	}
+	trace_load(tdq);
 #endif
 
 	/*
