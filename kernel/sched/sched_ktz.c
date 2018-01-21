@@ -111,8 +111,10 @@ DEFINE_PER_CPU(uint32_t, randomval);
 
 static inline void trace_load(struct ktz_tdq *tdq)
 {
+#ifdef CONFIG_SMP
 	struct rq *rq = RQ(tdq);
 	trace_sched_load_changed(rq->cpu, rq->nr_running);
+#endif
 }
 
 
@@ -1401,7 +1403,7 @@ static void task_tick_ktz(struct rq *rq, struct task_struct *curr, int queued)
 static void task_fork_ktz(struct task_struct *p)
 {
 	struct task_struct *child = p;
-	struct task_struct *parent = p->parent;
+	struct task_struct *parent = current;
 	struct sched_ktz_entity *pktz_se = KTZ_SE(parent);
 
 	/* Update parent stats. */
