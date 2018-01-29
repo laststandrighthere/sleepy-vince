@@ -453,6 +453,12 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 
 	dev_dbg(pTAS2557->dev, "Enable: %d\n", bEnable);
 
+	tas2557_get_die_temperature(pTAS2770, &nValue);
+	if (nValue == 0x80000000) {
+		dev_err(pTAS2557->dev, "%s, thermal sensor is wrong, mute output\n", __func__);
+		goto end;
+	}
+
 	if ((pTAS2557->mpFirmware->mnPrograms == 0)
 		|| (pTAS2557->mpFirmware->mnConfigurations == 0)) {
 		dev_err(pTAS2557->dev, "%s, firmware not loaded\n", __func__);
