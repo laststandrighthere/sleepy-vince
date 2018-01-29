@@ -5212,8 +5212,6 @@ static inline void hrtick_update(struct rq *rq)
 #endif
 
 #ifdef CONFIG_SMP
-static bool cpu_overutilized(int cpu);
-
 static bool sd_overutilized(struct sched_domain *sd)
 {
 	return sd->shared->overutilized;
@@ -5766,11 +5764,6 @@ unsigned long capacity_curr_of(int cpu)
 	unsigned long scale_freq = arch_scale_freq_capacity(NULL, cpu);
 
 	return cap_scale(max_cap, scale_freq);
-}
-
-inline bool energy_aware(void)
-{
-	return sched_feat(ENERGY_AWARE);
 }
 
 /*
