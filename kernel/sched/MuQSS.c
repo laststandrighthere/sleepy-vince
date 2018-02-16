@@ -379,7 +379,7 @@ static inline void __double_rq_lock(struct rq *rq1, struct rq *rq2)
 	__acquires(rq1->lock)
 	__acquires(rq2->lock)
 {
-	if (rq1->lock < rq2->lock) {
+	if (rq1 < rq2) {
 		raw_spin_lock(rq1->lock);
 		raw_spin_lock_nested(rq2->lock, SINGLE_DEPTH_NESTING);
 	} else {
@@ -412,7 +412,7 @@ static inline void double_rq_unlock(struct rq *rq1, struct rq *rq2)
 	__releases(rq2->lock)
 {
 	raw_spin_unlock(rq1->lock);
-	if (rq1 != rq2)
+	if (rq1->lock != rq2->lock)
 		raw_spin_unlock(rq2->lock);
 	else
 		__release(rq2->lock);
