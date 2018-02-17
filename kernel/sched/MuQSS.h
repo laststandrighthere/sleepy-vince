@@ -103,18 +103,15 @@ struct rq {
 	int *cpu_locality; /* CPU relative cache distance */
 	struct rq **rq_order; /* RQs ordered by relative cache distance */
 
+	struct rq *smp_leader; /* First physical CPU per node */
 #ifdef CONFIG_SCHED_SMT
-#ifdef CONFIG_RQSHARE_SMT
 	struct rq *smt_leader; /* First logical CPU in SMT siblings */
-#endif
 	cpumask_t thread_mask;
 	bool (*siblings_idle)(struct rq *rq);
 	/* See if all smt siblings are idle */
 #endif /* CONFIG_SCHED_SMT */
 #ifdef CONFIG_SCHED_MC
-#ifdef CONFIG_RQSHARE_MC
 	struct rq *mc_leader; /* First logical CPU in MC siblings */
-#endif
 	cpumask_t core_mask;
 	bool (*cache_idle)(struct rq *rq);
 	/* See if all cache siblings are idle */

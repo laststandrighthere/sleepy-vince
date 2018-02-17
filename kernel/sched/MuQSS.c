@@ -141,6 +141,39 @@ void print_scheduler_version(void)
 	printk(KERN_INFO "MuQSS CPU scheduler v0.152 by Con Kolivas.\n");
 }
 
+#define RQSHARE_NONE 0
+#define RQSHARE_SMT 1
+#define RQSHARE_MC 2
+#define RQSHARE_SMP 3
+
+/*
+ * This determines what level of runqueue sharing will be done and is
+ * configurable at boot time with the bootparam rqshare =
+ */
+static int rqshare __read_mostly = CONFIG_SHARERQ; /* Default RQSHARE_MC */
+
+static int __init set_rqshare(char *str)
+{
+	if (!strncmp(str, "none", 4)) {
+		rqshare = RQSHARE_NONE;
+		return 0;
+	}
+	if (!strncmp(str, "smt", 3)) {
+		rqshare = RQSHARE_SMT;
+		return 0;
+	}
+	if (!strncmp(str, "mc", 2)) {
+		rqshare = RQSHARE_MC;
+		return 0;
+	}
+	if (!strncmp(str, "smp", 2)) {
+		rqshare = RQSHARE_SMP;
+		return 0;
+	}
+	return 1;
+}
+__setup("rqshare=", set_rqshare);
+
 /*
  * This is the time all tasks within the same priority round robin.
  * Value is in ms and set to a minimum of 6ms.
@@ -1660,7 +1693,7 @@ static void try_preempt(struct task_struct *p, struct rq *this_rq)
 
 	cpumask_and(&tmp, &cpu_online_map, &p->cpus_allowed);
 
-	for (i = 0; i < total_runqueues); i++) {
+	for (i = 0; i < total_runqueues; i++) {
 		struct rq *rq = this_rq->rq_order[i];
 
 		if (!cpumask_test_cpu(rq->cpu, &tmp))
@@ -7440,7 +7473,7 @@ void __init sched_init_smp(void)
 	bool smt_threads = false;
 #endif
 	cpumask_var_t non_isolated_cpus;
-	struct rq *rq, *other_rq;
+	struct rq *rq, *other_rq, *leader;
 
 	alloc_cpumask_var(&non_isolated_cpus, GFP_KERNEL);
 	alloc_cpumask_var(&fallback_doms, GFP_KERNEL);
@@ -7477,17 +7510,23 @@ void __init sched_init_smp(void)
 	 * nodes) are treated as very distant.
 	 */
 	for_each_online_cpu(cpu) {
-#ifdef CONFIG_RQSHARE_MC
-		struct rq *mc_leader = NULL;
-#endif
 		rq = cpu_rq(cpu);
 
 		/* First check if this cpu is in the same node */
 		for_each_domain(cpu, sd) {
 			if (sd->level > SD_LV_MC)
 				continue;
+			leader = NULL;
 			/* Set locality to local node if not already found lower */
 			for_each_cpu(other_cpu, sched_domain_span(sd)) {
+				if (rqshare == RQSHARE_SMP) {
+					other_rq = cpu_rq(other_cpu);
+
+					/* Set the smp_leader to the first CPU */
+					if (!leader)
+						leader = rq;
+					other_rq->smp_leader = leader;
+				}
 				if (rq->cpu_locality[other_cpu] > 3)
 					rq->cpu_locality[other_cpu] = 3;
 			}
@@ -7498,42 +7537,41 @@ void __init sched_init_smp(void)
 		 * siblings of its own allowing mixed topologies.
 		 */
 #ifdef CONFIG_SCHED_MC
-		for_each_cpu(other_cpu, core_cpumask(cpu)) {
-#ifdef CONFIG_RQSHARE_MC
-			other_rq = cpu_rq(other_cpu);
-
-			/* Set the mc_leader to the first CPU */
-			if (!mc_leader)
-				mc_leader = rq;
-			other_rq->mc_leader = mc_leader;
-#endif
-			if (rq->cpu_locality[other_cpu] > 2)
-				rq->cpu_locality[other_cpu] = 2;
-		}
+		leader = NULL;
 		if (cpumask_weight(core_cpumask(cpu)) > 1) {
 			cpumask_copy(&rq->core_mask, core_cpumask(cpu));
 			cpumask_clear_cpu(cpu, &rq->core_mask);
+			for_each_cpu(other_cpu, core_cpumask(cpu)) {
+				if (rqshare == RQSHARE_MC) {
+					other_rq = cpu_rq(other_cpu);
+
+					/* Set the mc_leader to the first CPU */
+					if (!leader)
+						leader = rq;
+					other_rq->mc_leader = leader;
+				}
+				if (rq->cpu_locality[other_cpu] > 2)
+					rq->cpu_locality[other_cpu] = 2;
+			}
 			rq->cache_idle = cache_cpu_idle;
 		}
 #endif
 #ifdef CONFIG_SCHED_SMT
+		leader = NULL;
 		if (cpumask_weight(thread_cpumask(cpu)) > 1) {
-#ifdef CONFIG_RQSHARE_SMT
-			struct rq *smt_leader = NULL;
-#endif
-
 			cpumask_copy(&rq->thread_mask, thread_cpumask(cpu));
 			cpumask_clear_cpu(cpu, &rq->thread_mask);
 			for_each_cpu(other_cpu, thread_cpumask(cpu)) {
-#ifdef CONFIG_RQSHARE_SMT
-				other_rq = cpu_rq(other_cpu);
+				if (rqshare == RQSHARE_SMT) {
+					other_rq = cpu_rq(other_cpu);
 
-				/* Set the smt_leader to the first CPU */
-				if (!smt_leader)
-					smt_leader = rq;
-				other_rq->smt_leader = smt_leader;
-#endif				
-				rq->cpu_locality[other_cpu] = 1;
+					/* Set the smt_leader to the first CPU */
+					if (!smt_leader)
+						smt_leader = rq;
+					other_rq->smt_leader = smt_leader;
+				}
+				if (rq->cpu_locality[other_cpu] > 1)
+					rq->cpu_locality[other_cpu] = 1;
 			}
 			rq->siblings_idle = siblings_cpu_idle;
 			smt_threads = true;
@@ -7561,65 +7599,87 @@ void __init sched_init_smp(void)
 		}
 	}
 
-#ifdef CONFIG_RQSHARE_MC
 	for_each_online_cpu(cpu) {
-		struct rq *mc_leader;
-
 		rq = cpu_rq(cpu);
-		mc_leader = rq->mc_leader;
+		leader = rq->smp_leader;
 
 		rq_lock(rq);
-		if (mc_leader && rq != mc_leader) {
-			printk(KERN_INFO "Sharing runqueue from CPU %d to CPU %d\n",
-			       mc_leader->cpu, rq->cpu);
+		if (leader && rq != leader) {
+			printk(KERN_INFO "Sharing SMP runqueue from CPU %d to CPU %d\n",
+			       leader->cpu, rq->cpu);
 			kfree(rq->node);
 			kfree(rq->sl);
 			kfree(rq->lock);
-			rq->node = mc_leader->node;
-			rq->sl = mc_leader->sl;
-			rq->lock = mc_leader->lock;
+			rq->node = leader->node;
+			rq->sl = leader->sl;
+			rq->lock = leader->lock;
 			barrier();
 			/* To make up for not unlocking the freed runlock */
 			preempt_enable();
 		} else
 			rq_unlock(rq);
 	}
-#endif
-#ifdef CONFIG_RQSHARE_SMT
-	for_each_online_cpu(cpu) {
-		struct rq *smt_leader;
-		rq = cpu_rq(cpu);
 
-		smt_leader = rq->smt_leader;
+#ifdef CONFIG_SCHED_MC
+	for_each_online_cpu(cpu) {
+		rq = cpu_rq(cpu);
+		leader = rq->mc_leader;
 
 		rq_lock(rq);
-		if (smt_leader && rq != smt_leader) {
-			printk(KERN_INFO "Sharing runqueue from CPU %d to CPU %d\n",
-			       smt_leader->cpu, rq->cpu);
+		if (leader && rq != leader) {
+			printk(KERN_INFO "Sharing MC runqueue from CPU %d to CPU %d\n",
+			       leader->cpu, rq->cpu);
 			kfree(rq->node);
 			kfree(rq->sl);
 			kfree(rq->lock);
-			rq->node = smt_leader->node;
-			rq->sl = smt_leader->sl;
-			rq->lock = smt_leader->lock;
+			rq->node = leader->node;
+			rq->sl = leader->sl;
+			rq->lock = leader->lock;
 			barrier();
 			/* To make up for not unlocking the freed runlock */
 			preempt_enable();
 		} else
 			rq_unlock(rq);
 	}
-#endif
+#endif /* CONFIG_SCHED_MC */
+
+#ifdef CONFIG_SCHED_SMT
+	for_each_online_cpu(cpu) {
+		rq = cpu_rq(cpu);
+
+		leader = rq->smt_leader;
+
+		rq_lock(rq);
+		if (leader && rq != leader) {
+			printk(KERN_INFO "Sharing SMT runqueue from CPU %d to CPU %d\n",
+			       leader->cpu, rq->cpu);
+			kfree(rq->node);
+			kfree(rq->sl);
+			kfree(rq->lock);
+			rq->node = leader->node;
+			rq->sl = leader->sl;
+			rq->lock = leader->lock;
+			barrier();
+			/* To make up for not unlocking the freed runlock */
+			preempt_enable();
+		} else
+			rq_unlock(rq);
+	}
+#endif /* CONFIG_SCHED_SMT */
 
 	total_runqueues = 0;
 	for_each_possible_cpu(cpu) {
 		int locality, total_rqs = 0;
 
 		rq = cpu_rq(cpu);
-#ifdef CONFIG_RQSHARE_MC
-		if (!rq->mc_leader || rq->mc_leader == rq)
-#elif CONFIG_RQSHARE_SMT
-		if (!rq->smt_leader || rq->smt_leader == rq)
+		if (
+#ifdef CONFIG_SCHED_MC
+		    (rq->mc_leader == rq) &&
 #endif
+#ifdef CONFIG_SCHED_SMT
+		    (rq->smt_leader == rq) &&
+#endif
+                    (rq->smp_leader == rq))
 			total_runqueues++;
 
 		for (locality = 0; locality <= 4; locality++) {
@@ -7627,11 +7687,14 @@ void __init sched_init_smp(void)
 				other_rq = cpu_rq(other_cpu);
 
 				if (rq->cpu_locality[other_cpu] == locality) {
-#ifdef CONFIG_RQSHARE_MC
-					if (!other_rq->mc_leader || other_rq->mc_leader == other_rq)
-#elif CONFIG_RQSHARE_SMT
-					if (!other_rq->smt_leader || other_rq->smt_leader == other_rq)
+					if (
+#ifdef CONFIG_SCHED_MC
+					    (other_rq->mc_leader == other_rq) &&
 #endif
+#ifdef CONFIG_SCHED_SMT
+					    (other_rq->smt_leader == other_rq) &&
+#endif
+					    (other_rq->smp_leader == other_rq))
 						rq->rq_order[total_rqs++] = cpu_rq(other_cpu);
 				}
 
@@ -7646,7 +7709,24 @@ void __init sched_init_smp(void)
 			       rq->rq_order[i]->cpu);
 		}
 	}
-	printk(KERN_INFO "MuQSS Total runqueues %d\n", total_runqueues);
+	switch (rqshare) {
+		case RQSHARE_SMP:
+			printk(KERN_INFO "MuQSS runqueue share type SMP total runqueues: %d\n",
+				total_runqueues);
+			break;
+		case RQSHARE_MC:
+			printk(KERN_INFO "MuQSS runqueue share type MC total runqueues: %d\n",
+				total_runqueues);
+			break;
+		case RQSHARE_SMT:
+			printk(KERN_INFO "MuQSS runqueue share type SMT total runqueues: %d\n",
+				total_runqueues);
+			break;
+		case RQSHARE_NONE:
+			printk(KERN_INFO "MuQSS runqueue share type none total runqueues: %d\n",
+				total_runqueues);
+			break;
+	}
 
 	sched_smp_initialized = true;
 }
@@ -7734,12 +7814,6 @@ void __init sched_init(void)
 #endif /* CONFIG_CGROUP_SCHED */
 	for_each_possible_cpu(i) {
 		rq = cpu_rq(i);
-#ifdef CONFIG_RQSHARE_MC
-		rq->mc_leader = NULL;
-#endif
-#ifdef CONFIG_RQSHARE_SMT
-		rq->smt_leader = NULL;
-#endif
 		rq->node = kmalloc(sizeof(skiplist_node), GFP_ATOMIC);
 		skiplist_init(rq->node);
 		rq->sl = new_skiplist(rq->node);
@@ -7757,6 +7831,13 @@ void __init sched_init(void)
 		rq->iso_ticks = 0;
 		rq->iso_refractory = false;
 #ifdef CONFIG_SMP
+		rq->smp_leader = rq;
+#ifdef CONFIG_SCHED_MC
+		rq->mc_leader = rq;
+#endif
+#ifdef CONFIG_SCHED_SMT
+		rq->smt_leader = rq;
+#endif
 		rq->sd = NULL;
 		rq->rd = NULL;
 		rq->online = false;
