@@ -7683,7 +7683,13 @@ void __init sched_init_smp(void)
 			total_runqueues++;
 
 		for (locality = 0; locality <= 4; locality++) {
-			for_each_possible_cpu(other_cpu) {
+			int test_cpu;
+
+			for_each_possible_cpu(test_cpu) {
+				/* Work from each CPU up instead of every rq
+				 * starting at CPU 0 */
+				other_cpu = test_cpu + cpu;
+				other_cpu %= num_possible_cpus();
 				other_rq = cpu_rq(other_cpu);
 
 				if (rq->cpu_locality[other_cpu] == locality) {
@@ -7695,9 +7701,8 @@ void __init sched_init_smp(void)
 					    (other_rq->smt_leader == other_rq) &&
 #endif
 					    (other_rq->smp_leader == other_rq))
-						rq->rq_order[total_rqs++] = cpu_rq(other_cpu);
+						rq->rq_order[total_rqs++] = other_rq;
 				}
-
 			}
 		}
 	}
