@@ -7315,6 +7315,11 @@ static inline bool task_fits_max(struct task_struct *p, int cpu)
 	return task_fits_capacity(p, capacity, cpu);
 }
 
+struct find_best_target_env {
+	struct cpumask *rtg_target;
+	bool placement_boost;
+};
+
 static inline bool skip_sg(struct task_struct *p, struct sched_group *sg,
 			   struct cpumask *rtg_target)
 {
@@ -7342,8 +7347,7 @@ static int start_cpu(bool boosted)
 
 static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 				   bool boosted, bool prefer_idle,
-				   struct cpumask *rtg_target,
-				   enum sched_boost_policy placement_boost)
+				   struct find_best_target_env *fbt_env)
 {
 	unsigned long min_util = boosted_task_util(p);
 	unsigned long target_capacity = ULONG_MAX;
@@ -7389,7 +7393,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	/* Scan CPUs in all SDs */
 	sg = sd->groups;
 	do {
-		if (skip_sg(p, sg, rtg_target))
+		if (skip_sg(p, sg, fbt_env->rtg_target))
 			continue;
 
 		for_each_cpu_and(i, &p->cpus_allowed, sched_group_span(sg)) {
@@ -7429,7 +7433,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 			 * other than min capacity CPUs. Pick the CPU which
 			 * has the maximum spare capacity.
 			 */
-			if (placement_boost) {
+			if (fbt_env->placement_boost) {
 				if (spare_cap > target_max_spare_cap) {
 					target_cpu = i;
 					target_max_spare_cap = spare_cap;
@@ -7873,6 +7877,27 @@ static inline struct energy_env *get_eenv(struct task_struct *p, int prev_cpu)
 	return eenv;
 }
 
+static inline struct cpumask *find_rtg_target(struct task_struct *p)
+{
+	struct related_thread_group *grp;
+	struct cpumask *rtg_target;
+
+	rcu_read_lock();
+
+	grp = task_related_thread_group(p);
+	if (grp && grp->preferred_cluster) {
+		rtg_target = &grp->preferred_cluster->cpus;
+		if (!task_fits_max(p, cpumask_first(rtg_target)))
+			rtg_target = NULL;
+	} else {
+		rtg_target = NULL;
+	}
+
+	rcu_read_unlock();
+
+	return rtg_target;
+}
+
 /*
  * Needs to be called inside rcu_read_lock critical section.
  * sd is a pointer to the sched domain we wish to use for an
@@ -7887,18 +7912,8 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	int cpu_iter, eas_cpu_idx = EAS_CPU_NXT;
 	int target_cpu = -1;
 	struct energy_env *eenv;
-	struct related_thread_group *grp;
-	struct cpumask *rtg_target = NULL;
-	enum sched_boost_policy placement_boost =
-			task_sched_boost(p) ? sched_boost_policy() :
-			SCHED_BOOST_NONE;
-
-	grp = task_related_thread_group(p);
-	if (grp && grp->preferred_cluster)
-		rtg_target = &grp->preferred_cluster->cpus;
-
-	if (rtg_target && !task_fits_max(p, cpumask_first(rtg_target)))
-		rtg_target = NULL;
+	struct cpumask *rtg_target = find_rtg_target(p);
+	struct find_best_target_env fbt_env;
 
 	if (sysctl_sched_sync_hint_enable && sync &&
 				bias_to_waker_cpu(p, cpu, rtg_target)) {
@@ -7955,10 +7970,12 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 
 		eenv->max_cpu_count = EAS_CPU_BKP + 1;
 
+		fbt_env.rtg_target = rtg_target;
+		fbt_env.placement_boost = task_placement_boost_enabled(p);
+
 		/* Find a cpu with sufficient capacity */
 		target_cpu = find_best_target(p, &eenv->cpu[EAS_CPU_BKP].cpu_id,
-					      boosted, prefer_idle, rtg_target,
-					      placement_boost);
+					      boosted, prefer_idle, &fbt_env);
 
 		/* Immediately return a found idle CPU for a prefer_idle task */
 		if (prefer_idle && target_cpu >= 0 && idle_cpu(target_cpu))
@@ -7985,7 +8002,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 		return -1;
 	}
 
-	if (rtg_target != NULL || placement_boost)
+	if (use_fbt && (rtg_target != NULL || fbt_env.placement_boost))
 		return eenv->cpu[EAS_CPU_NXT].cpu_id;
 
 	/* find most energy-efficient CPU */
