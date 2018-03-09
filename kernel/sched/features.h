@@ -83,4 +83,4 @@ SCHED_FEAT(ATTACH_AGE_LOAD, true)
 /*
  * UtilEstimation. Use estimated CPU utilization.
  */
-SCHED_FEAT(UTIL_EST, false)
+SCHED_FEAT(UTIL_EST, true)
