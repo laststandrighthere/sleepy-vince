@@ -2026,6 +2026,9 @@ cpu_util_freq(int cpu, struct sched_walt_cpu_load *walt_load)
 	return cpu_util(cpu);
 }
 
+#define sched_ravg_window TICK_NSEC
+#define sysctl_sched_use_walt_cpu_util 0
+
 #endif /* CONFIG_SCHED_WALT */
 
 extern unsigned int capacity_margin_freq;
