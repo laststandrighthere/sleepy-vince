@@ -7753,7 +7753,7 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 bool __cpu_overutilized(int cpu, int delta)
 {
 	return (capacity_orig_of(cpu) * 1024) <
-		((cpu_util(cpu) + delta) * capacity_margin);
+		((cpu_util(cpu) + delta) * sched_capacity_margin_up[cpu]);
 }
 
 bool cpu_overutilized(int cpu)
@@ -7970,7 +7970,8 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 			 * fit without making the CPU overutilized.
 			 */
 			spare = capacity_spare_without(cpu_iter, p);
-			if (spare * 1024 < capacity_margin * task_util_est(p))
+			if (spare * 1024 < sched_capacity_margin_up[cpu_iter] *
+								task_util(p))
 				continue;
 
 			/* Add CPU candidate */
@@ -9663,7 +9664,8 @@ group_is_overloaded(struct lb_env *env, struct sg_lb_stats *sgs)
 static inline bool
 group_smaller_min_cpu_capacity(struct sched_group *sg, struct sched_group *ref)
 {
-	return sg->sgc->min_capacity * capacity_margin <
+	return sg->sgc->min_capacity *
+				sched_capacity_margin_up[group_first_cpu(sg)] <
 						ref->sgc->min_capacity * 1024;
 }
 
@@ -10062,7 +10064,8 @@ next_group:
 	 * needs to be done at the next sched domain level as well.
 	 */
 	if (lb_sd_parent(env->sd) &&
-	    sds->total_capacity * 1024 < sds->total_util * capacity_margin)
+	    sds->total_capacity * 1024 < sds->total_util *
+			sched_capacity_margin_up[group_first_cpu(sds->local)])
 		set_sd_overutilized(env->sd->parent);
 }
 
