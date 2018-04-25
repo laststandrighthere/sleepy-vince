@@ -5974,7 +5974,8 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
 	 * utilization from cpu utilization. Instead just use
 	 * cpu_util for this case.
 	 */
-	if (likely(!walt_disabled && sysctl_sched_use_walt_cpu_util))
+	if (likely(!walt_disabled && sysctl_sched_use_walt_cpu_util) &&
+					p->state == TASK_WAKING)
 		return cpu_util(cpu);
 #endif
 
