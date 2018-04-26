@@ -225,8 +225,7 @@ do {									\
  * @ptr: pointer to the variable to wait on
  * @cond: boolean expression to wait for
  *
- * Equivalent to using smp_load_acquire() on the condition variable but employs
- * the control dependency of the wait to reduce the barrier on many platforms.
+ * Equivalent to using READ_ONCE() on the condition variable.
  *
  * Due to C lacking lambda expressions we load the value of *ptr into a
  * pre-named variable @VAL to be used in @cond.
