@@ -1055,7 +1055,10 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 
 	this_rq = RQ(this_tdq);
 	this_cpu = smp_processor_id();
-	BUG_ON(!cpu_active(this_cpu));
+
+	if(!cpu_active(this_cpu))
+		return;
+
 	cpumask_setall(&cpus);
 	/* Don't steal from oursleves. */
 	cpumask_clear_cpu(this_cpu, &cpus);
