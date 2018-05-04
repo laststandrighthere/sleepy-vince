@@ -7292,10 +7292,6 @@ static inline int task_fits_capacity(struct task_struct *p,
 					int cpu)
 {
 	unsigned int margin;
-	unsigned long max_capacity = cpu_rq(cpu)->rd->max_cpu_capacity;
-
-	if (capacity == max_capacity)
-		return true;
 
 	if (capacity_orig_of(task_cpu(p)) > capacity_orig_of(cpu))
 		margin = sched_capacity_margin_down[task_cpu(p)];
@@ -7788,7 +7784,7 @@ static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
 	/* Bring task utilization in sync with prev_cpu */
 	sync_entity_load_avg(&p->se);
 
-	return !task_fits_capacity(p, min_cap, cpu);
+	return !task_fits_max(p, cpu);
 }
 
 bool __cpu_overutilized(int cpu, int delta)
