@@ -2231,10 +2231,11 @@ static void genpd_dev_pm_sync(struct device *dev)
  * Parse device's OF node to find a PM domain specifier. If such is found,
  * attaches the device to retrieved pm_domain ops.
  *
- * Returns 0 on successfully attached PM domain or negative error code. Note
- * that if a power-domain exists for the device, but it cannot be found or
- * turned on, then return -EPROBE_DEFER to ensure that the device is not
- * probed and to re-try again later.
+ * Returns 1 on successfully attached PM domain, 0 when the device don't need a
+ * PM domain or a negative error code in case of failures. Note that if a
+ * power-domain exists for the device, but it cannot be found or turned on,
+ * then return -EPROBE_DEFER to ensure that the device is not probed and to
+ * re-try again later.
  */
 int genpd_dev_pm_attach(struct device *dev)
 {
@@ -2243,12 +2244,12 @@ int genpd_dev_pm_attach(struct device *dev)
 	int ret;
 
 	if (!dev->of_node)
-		return -ENODEV;
+		return 0;
 
 	ret = of_parse_phandle_with_args(dev->of_node, "power-domains",
 					"#power-domain-cells", 0, &pd_args);
 	if (ret < 0)
-		return ret;
+		return 0;
 
 	mutex_lock(&gpd_list_lock);
 	pd = genpd_get_from_provider(&pd_args);
@@ -2269,7 +2270,7 @@ int genpd_dev_pm_attach(struct device *dev)
 		if (ret != -EPROBE_DEFER)
 			dev_err(dev, "failed to add to PM domain %s: %d",
 				pd->name, ret);
-		goto out;
+		return ret;
 	}
 
 	dev->pm_domain->detach = genpd_dev_pm_detach;
@@ -2281,8 +2282,8 @@ int genpd_dev_pm_attach(struct device *dev)
 
 	if (ret)
 		genpd_remove_device(pd, dev);
-out:
-	return ret ? -EPROBE_DEFER : 0;
+
+	return ret ? -EPROBE_DEFER : 1;
 }
 EXPORT_SYMBOL_GPL(genpd_dev_pm_attach);
 
