@@ -7993,6 +7993,12 @@ static inline struct cpumask *find_rtg_target(struct task_struct *p)
 }
 #endif
 
+enum fastpaths {
+	NONE = 0,
+	SYNC_WAKEUP,
+	PREV_CPU_BIAS,
+};
+
 /*
  * Needs to be called inside rcu_read_lock critical section.
  * sd is a pointer to the sched domain we wish to use for an
@@ -8011,19 +8017,26 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	struct cpumask *rtg_target = find_rtg_target(p);
 	struct find_best_target_env fbt_env;
 	bool need_idle = wake_to_idle(p);
+	u64 start_t = 0;
+	int fastpath = 0;
+
+	if (trace_sched_task_util_enabled())
+		start_t = sched_clock();
 
 	if (need_idle)
 		sync = 0;
 
 	if (sysctl_sched_sync_hint_enable && sync &&
 				bias_to_waker_cpu(p, cpu, rtg_target)) {
-		return cpu;
+		target_cpu = cpu;
+		fastpath = SYNC_WAKEUP;
+		goto out;
 	}
 
 	/* prepopulate energy diff environment */
 	eenv = get_eenv(p, prev_cpu);
 	if (eenv->max_cpu_count < 2)
-		return -1;
+		goto out;
 
 	if(!use_fbt) {
 		/*
@@ -8069,8 +8082,10 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 		prefer_idle = sched_feat(EAS_PREFER_IDLE) ?
 				(schedtune_prefer_idle(p) > 0) : 0;
 
-		if (bias_to_prev_cpu(p, rtg_target))
-			return prev_cpu;
+		if (bias_to_prev_cpu(p, rtg_target)) {
+			fastpath = PREV_CPU_BIAS;
+			goto out;
+		}
 
 		eenv->max_cpu_count = EAS_CPU_BKP + 1;
 
@@ -8104,7 +8119,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 		 * candidates beyond prev_cpu, so we will
 		 * fall-back to the regular slow-path.
 		 */
-		return -1;
+		goto out;
 	}
 
 #ifdef CONFIG_SCHED_WALT
@@ -8115,13 +8130,21 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	if (use_fbt && (fbt_env.placement_boost || fbt_env.need_idle ||
 		(rtg_target && !cpumask_test_cpu(prev_cpu, rtg_target)) ||
 		 __cpu_overutilized(prev_cpu, delta) ||
-		 !task_fits_max(p, prev_cpu) || cpu_isolated(prev_cpu)))
-		return eenv->cpu[EAS_CPU_NXT].cpu_id;
+		 !task_fits_max(p, prev_cpu) || cpu_isolated(prev_cpu))) {
+		target_cpu = eenv->cpu[EAS_CPU_NXT].cpu_id;
+		goto out;
+	}
 
 	/* find most energy-efficient CPU */
 	target_cpu = select_energy_cpu_idx(eenv) < 0 ? -1 :
 					eenv->cpu[eenv->next_idx].cpu_id;
 
+out:
+	trace_sched_task_util(p, eenv->cpu[EAS_CPU_NXT].cpu_id,
+			eenv->cpu[EAS_CPU_BKP].cpu_id, target_cpu, sync,
+			fbt_env.need_idle, fastpath, fbt_env.placement_boost,
+			rtg_target ? cpumask_first(rtg_target) : -1,
+			start_t);
 	return target_cpu;
 }
 
