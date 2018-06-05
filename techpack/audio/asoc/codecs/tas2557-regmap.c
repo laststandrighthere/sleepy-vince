@@ -591,8 +591,8 @@ static void timer_work_routine(struct work_struct *work)
 		if (!(pTAS2557->mnDieTvReadCounter % LOW_TEMPERATURE_COUNTER)) {
 			nAvg /= LOW_TEMPERATURE_COUNTER;
 			dev_dbg(pTAS2557->dev, "check : avg=%d\n", nAvg);
-			if ((nAvg & 0x80000000) != 0) {
-				/* if Die temperature is below ZERO */
+			if (nAvg < -6) {
+				/* if Die temperature is below -6 degree C */
 				if (pTAS2557->mnDevCurrentGain != LOW_TEMPERATURE_GAIN) {
 					nResult = tas2557_set_DAC_gain(pTAS2557, LOW_TEMPERATURE_GAIN);
 					if (nResult < 0)
