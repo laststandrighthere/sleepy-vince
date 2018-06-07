@@ -473,6 +473,8 @@ struct tas2557_priv {
 	*/
 	bool mbBypassTMax;
 
+	unsigned int mnEdge;
+
 #ifdef CONFIG_TAS2557_CODEC
 	struct mutex codec_lock;
 #endif
