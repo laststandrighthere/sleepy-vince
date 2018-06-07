@@ -769,6 +769,8 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 	pTAS2557->runtime_suspend = tas2557_runtime_suspend;
 	pTAS2557->runtime_resume = tas2557_runtime_resume;
 	pTAS2557->mnRestart = 0;
+	pTAS2557->mnEdge = 4;
+
 	mutex_init(&pTAS2557->dev_lock);
 
 	/* Reset the chip */

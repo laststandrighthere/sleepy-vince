@@ -446,6 +446,18 @@ end:
 	return nResult;
 }
 
+int tas2557_update_edge(struct tas2557_priv *pTAS2557)
+{
+	int nResult = 0;
+	dev_dbg(pTAS2557->dev,
+		"%s, edge: %d\n",
+		__func__, pTAS2557->mnEdge);
+
+	nResult = pTAS2557->update_bits(pTAS2557, TAS2557_SPK_CTRL_REG, 0x7, pTAS2557->mnEdge);
+
+	return nResult;
+}
+
 int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 {
 	int nResult = 0;
@@ -1864,6 +1876,8 @@ int tas2557_set_program(struct tas2557_priv *pTAS2557,
 	nResult = tas2557_load_coefficient(pTAS2557, -1, nConfiguration, false);
 	if (nResult < 0)
 		goto end;
+
+	tas2557_update_edge(pTAS2557);
 
 	if (pTAS2557->mbPowerUp) {
 		pTAS2557->clearIRQ(pTAS2557);
