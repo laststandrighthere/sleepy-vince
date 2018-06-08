@@ -8087,7 +8087,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 {
 	int use_fbt = sched_feat(FIND_BEST_TARGET);
 	int cpu_iter, eas_cpu_idx = EAS_CPU_NXT;
-	int delta = 0;
+	int energy_cpu = prev_cpu, delta = 0;
 	int target_cpu = -1;
 	struct energy_env *eenv;
 	struct cpumask *rtg_target = find_rtg_target(p);
@@ -8176,8 +8176,10 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 					      boosted, prefer_idle, &fbt_env);
 
 		/* Immediately return a found idle CPU for a prefer_idle task */
-		if (prefer_idle && target_cpu >= 0 && idle_cpu(target_cpu))
-			return target_cpu;
+		if (prefer_idle && target_cpu >= 0 && idle_cpu(target_cpu)) {
+			energy_cpu = target_cpu;
+			goto out;
+		}
 
 		/* Place target into NEXT slot */
 		eenv->cpu[EAS_CPU_NXT].cpu_id = target_cpu;
