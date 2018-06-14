@@ -8036,8 +8036,10 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	struct cpumask *rtg_target = find_rtg_target(p);
 	struct find_best_target_env fbt_env;
 	bool need_idle = wake_to_idle(p);
+	bool placement_boost = task_placement_boost_enabled(p);
 	u64 start_t = 0;
 	int fastpath = 0;
+	int next_cpu = -1, backup_cpu = -1;
 
 	if (trace_sched_task_util_enabled())
 		start_t = sched_clock();
@@ -8109,7 +8111,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 		eenv->max_cpu_count = EAS_CPU_BKP + 1;
 
 		fbt_env.rtg_target = rtg_target;
-		fbt_env.placement_boost = task_placement_boost_enabled(p);
+		fbt_env.placement_boost = placement_boost;
 		fbt_env.need_idle = need_idle;
 
 		/* Find a cpu with sufficient capacity */
@@ -8122,6 +8124,9 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 
 		/* Place target into NEXT slot */
 		eenv->cpu[EAS_CPU_NXT].cpu_id = target_cpu;
+
+		next_cpu = eenv->cpu[EAS_CPU_NXT].cpu_id;
+		backup_cpu = eenv->cpu[EAS_CPU_BKP].cpu_id;
 
 		/* take note if no backup was found */
 		if (eenv->cpu[EAS_CPU_BKP].cpu_id < 0)
@@ -8159,11 +8164,9 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 					eenv->cpu[eenv->next_idx].cpu_id;
 
 out:
-	trace_sched_task_util(p, eenv->cpu[EAS_CPU_NXT].cpu_id,
-			eenv->cpu[EAS_CPU_BKP].cpu_id, target_cpu, sync,
-			fbt_env.need_idle, fastpath, fbt_env.placement_boost,
-			rtg_target ? cpumask_first(rtg_target) : -1,
-			start_t);
+	trace_sched_task_util(p, next_cpu, backup_cpu, target_cpu, sync,
+			need_idle, fastpath, placement_boost,
+			rtg_target ? cpumask_first(rtg_target) : -1, start_t);
 	return target_cpu;
 }
 
