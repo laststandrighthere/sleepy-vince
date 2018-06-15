@@ -334,6 +334,15 @@ static struct ctl_table kern_table[] = {
 		.extra1		= &zero,
 		.extra2		= &sysctl_sched_group_upmigrate_pct,
 	},
+	{
+		.procname	= "sched_min_task_util_for_boost_colocation",
+		.data		= &sysctl_sched_min_task_util_for_boost_colocation,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one_thousand,
+	},
 #endif
 #ifdef CONFIG_SCHED_DEBUG
 	{
