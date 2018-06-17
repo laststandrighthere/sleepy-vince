@@ -90,4 +90,9 @@ extern int sched_energy_aware_handler(struct ctl_table *table, int write,
 				 loff_t *ppos);
 #endif
 
+extern unsigned int sysctl_sched_boost;
+
+extern int sched_boost_handler(struct ctl_table *table, int write,
+			       void __user *buffer, size_t *lenp, loff_t *ppos);
+
 #endif /* _LINUX_SCHED_SYSCTL_H */
