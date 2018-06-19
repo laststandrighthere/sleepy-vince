@@ -7492,6 +7492,8 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 			long spare_cap;
 			int idle_idx = INT_MAX;
 
+			trace_sched_cpu_util(i);
+
 			if (!cpu_online(i))
 				continue;
 
@@ -7505,8 +7507,6 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 
 			if (sched_cpu_high_irqload(i))
 				continue;
-
-			trace_sched_cpu_util(i);
 
 			/*
 			 * p's blocked utilization is still accounted for on prev_cpu
@@ -7794,8 +7794,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	if (prefer_idle && (best_idle_cpu != -1)) {
 		trace_sched_find_best_target(p, prefer_idle, min_util, cpu,
 					     best_idle_cpu, best_active_cpu,
-					     best_idle_cpu);
-
+					     -1, best_idle_cpu, -1);
 		return best_idle_cpu;
 	}
 
@@ -7815,7 +7814,9 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 
 	trace_sched_find_best_target(p, prefer_idle, min_util, cpu,
 				     best_idle_cpu, best_active_cpu,
-				     target_cpu);
+				     most_spare_cap_cpu,
+				     target_cpu,
+				     *backup_cpu);
 
 	/* it is possible for target and backup
 	 * to select same CPU - if so, drop backup
