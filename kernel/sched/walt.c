@@ -2086,7 +2086,6 @@ void mark_task_starting(struct task_struct *p)
 
 	wallclock = sched_ktime_clock();
 	p->ravg.mark_start = p->last_wake_ts = wallclock;
-	p->last_cpu_selected_ts = wallclock;
 	update_task_cpu_cycles(p, cpu_of(rq), wallclock);
 }
 
