@@ -466,12 +466,6 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 
 	dev_dbg(pTAS2557->dev, "Enable: %d\n", bEnable);
 
-	tas2557_get_die_temperature(pTAS2770, &nValue);
-	if (nValue == 0x80000000) {
-		dev_err(pTAS2557->dev, "%s, thermal sensor is wrong, mute output\n", __func__);
-		goto end;
-	}
-
 	if ((pTAS2557->mpFirmware->mnPrograms == 0)
 		|| (pTAS2557->mpFirmware->mnConfigurations == 0)) {
 		dev_err(pTAS2557->dev, "%s, firmware not loaded\n", __func__);
@@ -524,6 +518,16 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 			if (nResult < 0)
 				goto end;
 
+			pTAS2557->mbPowerUp = true;
+
+			tas2557_get_die_temperature(pTAS2770, &nValue);
+			if (nValue == 0x80000000) {
+				dev_err(pTAS2557->dev, "%s, thermal sensor is wrong, mute output\n", __func__);
+				nResult = tas2557_dev_load_data(pTAS2557, p_tas2557_shutdown_data);
+				pTAS2557->mbPowerUp = false;
+				goto end;
+			}
+
 			if (pProgram->mnAppMode == TAS2557_APP_TUNINGMODE) {
 				/* turn on IRQ */
 				pTAS2557->enableIRQ(pTAS2557, true, true);
@@ -533,7 +537,6 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 						ns_to_ktime((u64)LOW_TEMPERATURE_CHECK_PERIOD * NSEC_PER_MSEC), HRTIMER_MODE_REL);
 				}
 			}
-			pTAS2557->mbPowerUp = true;
 			pTAS2557->mnRestart = 0;
 		}
 	} else {
