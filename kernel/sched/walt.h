@@ -297,9 +297,16 @@ void walt_irq_work(struct irq_work *irq_work);
 
 void walt_sched_init_rq(struct rq *rq);
 
+extern unsigned int walt_get_default_coloc_group_load(void);
+
 #else /* CONFIG_SCHED_WALT */
 
 static inline void walt_sched_init_rq(struct rq *rq) { }
+
+static inline unsigned int walt_get_default_coloc_group_load(void)
+{
+	return 0;
+}
 
 static inline void update_task_ravg(struct task_struct *p, struct rq *rq,
 				int event, u64 wallclock, u64 irqtime) { }
