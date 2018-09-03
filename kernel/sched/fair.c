@@ -8075,7 +8075,7 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 {
 	int use_fbt = sched_feat(FIND_BEST_TARGET);
 	int cpu_iter, eas_cpu_idx = EAS_CPU_NXT;
-	int energy_cpu = prev_cpu, delta = 0;
+	int delta = 0;
 	int target_cpu = -1;
 	struct energy_env *eenv;
 	struct cpumask *rtg_target = find_rtg_target(p);
@@ -8160,10 +8160,8 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 					      boosted, prefer_idle, &fbt_env);
 
 		/* Immediately return a found idle CPU for a prefer_idle task */
-		if (prefer_idle && target_cpu >= 0 && idle_cpu(target_cpu)) {
-			energy_cpu = target_cpu;
+		if (prefer_idle && target_cpu >= 0 && idle_cpu(target_cpu))
 			goto out;
-		}
 
 		/* Place target into NEXT slot */
 		eenv->cpu[EAS_CPU_NXT].cpu_id = target_cpu;
@@ -8204,10 +8202,13 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	}
 
 	/* find most energy-efficient CPU */
-	energy_cpu = select_energy_cpu_idx(eenv) < 0 ? prev_cpu :
+	target_cpu = select_energy_cpu_idx(eenv) < 0 ? prev_cpu :
 					eenv->cpu[eenv->next_idx].cpu_id;
 
 out:
+	if (target_cpu < 0)
+		target_cpu = prev_cpu;
+
 	trace_sched_task_util(p, next_cpu, backup_cpu, target_cpu, sync,
 			need_idle, fbt_env.fastpath, placement_boost,
 			rtg_target ? cpumask_first(rtg_target) : -1, start_t);
