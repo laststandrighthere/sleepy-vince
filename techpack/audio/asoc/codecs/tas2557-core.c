@@ -326,6 +326,8 @@ static void failsafe(struct tas2557_priv *pTAS2557)
 
 	if (pTAS2557->mpFirmware != NULL)
 		tas2557_clear_firmware(pTAS2557->mpFirmware);
+
+	pTAS2557->mpFirmware->mnPrograms = 0;
 }
 
 int tas2557_checkPLL(struct tas2557_priv *pTAS2557)
