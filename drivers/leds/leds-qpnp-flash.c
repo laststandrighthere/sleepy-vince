@@ -31,8 +31,8 @@
 #include <linux/qpnp/qpnp-revid.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
+#include <linux/string.h>
 #include "leds.h"
-
 #define FLASH_LED_PERIPHERAL_SUBTYPE(base)			(base + 0x05)
 #define FLASH_SAFETY_TIMER(base)				(base + 0x40)
 #define FLASH_MAX_CURRENT(base)					(base + 0x41)
