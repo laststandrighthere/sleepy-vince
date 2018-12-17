@@ -140,7 +140,11 @@ do {                                                    \
 #define OCP_ATTEMPT 20
 #define HS_DETECT_PLUG_TIME_MS (3 * 1000)
 #define SPECIAL_HS_DETECT_TIME_MS (2 * 1000)
+#ifdef CONFIG_MACH_XIAOMI_E7
+#define MBHC_BUTTON_PRESS_THRESHOLD_MIN 750
+#else /* CONFIG_MACH_XIAOMI_E7 */
 #define MBHC_BUTTON_PRESS_THRESHOLD_MIN 250
+#endif
 #define GND_MIC_SWAP_THRESHOLD 4
 #define GND_MIC_USBC_SWAP_THRESHOLD 2
 #define WCD_FAKE_REMOVAL_MIN_PERIOD_MS 100
@@ -149,8 +153,15 @@ do {                                                    \
 #define FW_READ_TIMEOUT 4000000
 #define FAKE_REM_RETRY_ATTEMPTS 3
 #define MAX_IMPED 60000
+#ifdef CONFIG_MACH_XIAOMI_E7
+#define CAM_HS_IMPED 45000
+#endif /* CONFIG_MACH_XIAOMI_E7 */
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+#define WCD_MBHC_BTN_PRESS_COMPL_TIMEOUT_MS  200
+#else
 #define WCD_MBHC_BTN_PRESS_COMPL_TIMEOUT_MS  50
+#endif /* CONFIG_MACH_XIAOMI_E7 */
 #define ANC_DETECT_RETRY_CNT 7
 #define WCD_MBHC_SPL_HS_CNT  1
 
