@@ -81,6 +81,9 @@
 		};
 		pmi_haptic: qcom,haptics@c000 {
 			qcom,vmax-mv = <3000>;
+			qcom,actuator-type = <1>;
+			qcom,use-play-irq;
+			qcom,use-sc-irq;
 		};
 	};
 };
