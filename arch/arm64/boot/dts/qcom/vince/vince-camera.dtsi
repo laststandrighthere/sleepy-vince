@@ -34,6 +34,13 @@
 };
 
 &cci {
+	/delete-node/ qcom,actuator@0;
+	/delete-node/ qcom,eeprom@0;
+	/delete-node/ qcom,eeprom@2;
+	/delete-node/ qcom,camera@0;
+	/delete-node/ qcom,camera@1;
+	/delete-node/ qcom,camera@2;
+
        actuator0: qcom,actuator@0 {
                 cell-index = <0>;
                 reg = <0x0>;
@@ -45,7 +52,6 @@
                 qcom,cam-vreg-max-voltage = <2850000>;
                 qcom,cam-vreg-op-mode = <80000>;
         };
-	/delete-node/ qcom,eeprom@0;
 
 	   eeprom0: qcom,eeprom@ {
                 cell-index = <0>;
@@ -95,7 +101,6 @@
                                 <&clock_gcc clk_gcc_camss_mclk0_clk>;
                 clock-names = "cam_src_clk", "cam_clk";
                 qcom,clock-rates = <24000000 0>;
-		/delete-property/ qcom,gpio-standby;
         };
 
 	eeprom1: qcom,eeprom@1 {
@@ -147,7 +152,7 @@
                 clock-names = "cam_src_clk", "cam_clk";
                 qcom,clock-rates = <24000000 0>;
         };
-	/delete-node/ qcom,eeprom@2;
+
          eeprom3: qcom,eeprom@3 {
                 cell-index = <3>;
                 reg = <0x3>;
@@ -360,9 +365,8 @@
                          <&clock_gcc clk_gcc_camss_mclk0_clk>;
                 clock-names = "cam_src_clk", "cam_clk";
                 qcom,clock-rates = <24000000 0>;
-		/delete-property/ qcom,gpio-standby;
         };
-	/delete-node/ qcom,camera@1;
+
 	qcom,camera@2 {
                 cell-index = <2>;
                 compatible = "qcom,camera";
@@ -400,7 +404,6 @@
                         <&clock_gcc clk_gcc_camss_mclk1_clk>;
                 clock-names = "cam_src_clk", "cam_clk";
                 qcom,clock-rates = <24000000 0>;
-		/delete-property/ qcom,gpio-standby;
         };
 
 };
