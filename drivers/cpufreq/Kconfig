@@ -293,6 +293,14 @@ config INPUT_BOOST_FREQ
 	help
 	  Input boost frequency for the CPU.
 
+config TA_STUNE_BOOST
+        int "Foreground app SchedTune boost value"
+        depends on DYNAMIC_STUNE_BOOST
+        default "15"
+        help
+          SchedTune boost value for the foreground app. This alters the
+          perceived load in order to bias CPU and frequency selection.
+
 config MAX_BOOST_FREQ
 	int "CPU max-boost freq"
 	default "0"
