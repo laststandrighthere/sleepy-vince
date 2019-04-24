@@ -193,16 +193,11 @@ static int select_pin_ctl(struct fpc1020_data *fpc1020, const char *name)
 		if (!strncmp(n, name, strlen(n))) {
 			rc = pinctrl_select_state(fpc1020->fingerprint_pinctrl,
 					fpc1020->pinctrl_state[i]);
-			if (rc)
-				dev_err(dev, "cannot select '%s'\n", name);
-			else
-				dev_dbg(dev, "Selected '%s'\n", name);
 			goto exit;
 		}
 	}
 
 	rc = -EINVAL;
-	dev_err(dev, "%s:'%s' not found\n", __func__, name);
 
 exit:
 	return rc;
@@ -267,9 +262,6 @@ static int hw_reset(struct fpc1020_data *fpc1020)
 	if (rc)
 		goto exit;
 	usleep_range(RESET_HIGH_SLEEP2_MIN_US, RESET_HIGH_SLEEP2_MAX_US);
-
-	irq_gpio = gpio_get_value(fpc1020->irq_gpio);
-	dev_info(dev, "IRQ after reset %d\n", irq_gpio);
 
 exit:
 	return rc;
@@ -580,18 +572,13 @@ static irqreturn_t fpc1020_irq_handler(int irq, void *handle)
 {
 	struct fpc1020_data *fpc1020 = handle;
 
-	dev_err(fpc1020->dev, "%s\n", __func__);
-
-
 	if (atomic_read(&fpc1020->wakeup_enabled)) {
 		__pm_wakeup_event(&fpc1020->ttw_wl,
 					msecs_to_jiffies(FPC_TTW_HOLD_TIME));
 	}
 
-
 	sysfs_notify(&fpc1020->dev->kobj, NULL, dev_attr_irq.attr.name);
 		if (fpc1020->wait_finger_down && fpc1020->fb_black) {
-		printk("%s enter\n", __func__);
 		fpc1020->wait_finger_down = false;
 		schedule_work(&fpc1020->work);
 	}

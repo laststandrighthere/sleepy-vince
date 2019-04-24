@@ -26,16 +26,13 @@ static int gf3208_request_named_gpio(struct gf_dev *gf_dev,const char *label, in
 	struct device_node *np = dev->of_node;
 	int rc = of_get_named_gpio(np, label, 0);
 	if (rc < 0) {
-		dev_err(dev, "failed to get '%s'\n", label);
 		return rc;
 	}
 	*gpio = rc;
 	rc = devm_gpio_request(dev, *gpio, label);
 	if (rc) {
-		dev_err(dev, "failed to request gpio %d\n", *gpio);
 		return rc;
 	}
-	dev_err(dev, "%s %d\n", label, *gpio);
 	return 0;
 }
 
@@ -49,16 +46,10 @@ static int select_pin_ctl(struct gf_dev *gf_dev, const char *name)
 		const char *n = pctl_names[i];
 		if (!strncmp(n, name, strlen(n))) {
 			rc = pinctrl_select_state(gf_dev->fingerprint_pinctrl,gf_dev->pinctrl_state[i]);
-
-			if (rc)
-				dev_err(dev, "cannot select '%s'\n", name);
-			else
-				dev_err(dev, "Selected '%s'\n", name);
 			goto exit;
 		}
 	}
 	rc = -EINVAL;
-	dev_err(dev, "%s:'%s' not found\n", __func__, name);
 exit:
 	return rc;
 }
@@ -192,8 +183,6 @@ static int hw_reset(struct  gf_dev *gf_dev)
 	if (rc)
 		goto exit;
 
-	irq_gpio = gpio_get_value(gf_dev->irq_gpio);
-	dev_info(dev, "IRQ after reset %d\n", irq_gpio);
 exit:
 	return rc;
 }
