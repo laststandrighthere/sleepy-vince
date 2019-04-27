@@ -879,7 +879,9 @@ static int msm_watchdog_probe(struct platform_device *pdev)
 		goto err;
 	}
 	init_watchdog_data(wdog_dd);
+	wdog_disable(wdog_dd);
 
+#if 0
 	/* Add wdog info to minidump table */
 	strlcpy(md_entry.name, "KWDOGDATA", sizeof(md_entry.name));
 	md_entry.virt_addr = (uintptr_t)wdog_dd;
@@ -887,6 +889,7 @@ static int msm_watchdog_probe(struct platform_device *pdev)
 	md_entry.size = sizeof(*wdog_dd);
 	if (msm_minidump_add_region(&md_entry) < 0)
 		pr_info("Failed to add Watchdog data in Minidump\n");
+#endif
 
 	return 0;
 err:
