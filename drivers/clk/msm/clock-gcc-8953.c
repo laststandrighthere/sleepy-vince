@@ -354,6 +354,7 @@ static struct clk_freq_tbl ftbl_vfe0_clk_src[] = {
 	F( 310000000,              gpll2,    3,    0,     0),
 	F( 400000000,              gpll0,    2,    0,     0),
 	F( 465000000,              gpll2,    2,    0,     0),
+	F( 581250000,              gpll2,  1.5,    0,     0),
 	F_END
 };
 
@@ -367,7 +368,7 @@ static struct rcg_clk vfe0_clk_src = {
 		.dbg_name = "vfe0_clk_src",
 		.ops = &clk_ops_rcg,
 		VDD_DIG_FMAX_MAP4(LOW_SVS, 100000000, SVS, 200000000, SVS_PLUS,
-				310000000, NOM, 465000000),
+				310000000, NOM, 581250000),
 		CLK_INIT(vfe0_clk_src.c),
 	},
 };
@@ -670,6 +671,7 @@ static struct clk_freq_tbl ftbl_vfe1_clk_src[] = {
 	F( 310000000,              gpll2,    3,    0,     0),
 	F( 400000000,              gpll0,    2,    0,     0),
 	F( 465000000,              gpll2,    2,    0,     0),
+	F( 581250000,              gpll2,  1.5,    0,     0),
 	F_END
 };
 
@@ -683,7 +685,7 @@ static struct rcg_clk vfe1_clk_src = {
 		.dbg_name = "vfe1_clk_src",
 		.ops = &clk_ops_rcg,
 		VDD_DIG_FMAX_MAP4(LOW_SVS, 100000000, SVS, 200000000, SVS_PLUS,
-				310000000, NOM, 465000000),
+				310000000, NOM, 581250000),
 		CLK_INIT(vfe1_clk_src.c),
 	},
 };
