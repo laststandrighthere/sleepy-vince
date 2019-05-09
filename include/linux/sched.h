@@ -368,6 +368,7 @@ extern int __must_check io_schedule_prepare(void);
 extern void io_schedule_finish(int token);
 extern long io_schedule_timeout(long timeout);
 extern void io_schedule(void);
+extern int set_task_boost(int boost, u64 period);
 
 void __noreturn do_task_dead(void);
 
@@ -1326,6 +1327,10 @@ struct task_struct {
 	struct sched_entity se;
 	struct sched_rt_entity rt;
 	u64 last_sleep_ts;
+
+	int boost;
+	u64 boost_period;
+	u64 boost_expires;
 #ifdef CONFIG_SCHED_WALT
 	struct ravg ravg;
 	/*
