@@ -5248,6 +5248,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
+	bool prefer_idle = sched_feat(EAS_PREFER_IDLE) ?
+				(schedtune_prefer_idle(p) > 0) : 0;
 
 	/*
 	 * The code below (indirectly) updates schedutil which looks at
@@ -5329,7 +5331,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 		 * into account, but that is not straightforward to implement,
 		 * and the following generally works well enough in practice.
 		 */
-		if (flags & ENQUEUE_WAKEUP)
+		if ((flags & ENQUEUE_WAKEUP) &&
+			!(prefer_idle && rq->nr_running == 1))
 			update_overutilized_status(rq);
 
 	}
@@ -6645,6 +6648,7 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 	unsigned long min_wake_util = ULONG_MAX;
 	unsigned long target_max_spare_cap = 0;
 	unsigned long target_util = ULONG_MAX;
+	unsigned long best_idle_util = ULONG_MAX;
 	bool prefer_idle = schedtune_prefer_idle(p);
 	bool boosted = schedtune_task_boost(p) > 0;
 	/* Initialise with deepest possible cstate (INT_MAX) */
@@ -6693,9 +6697,12 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 			 * Ensure minimum capacity to grant the required boost.
 			 * The target CPU can be already at a capacity level higher
 			 * than the one required to boost the task.
+			 * However, if the task prefers idle cpu and that
+			 * cpu is idle, skip this check.
 			 */
 			new_util = max(min_util, new_util);
-			if (new_util > capacity_orig)
+			if (!(prefer_idle && idle_cpu(i))
+				&& new_util > capacity_orig)
 				continue;
 
 			/*
@@ -6760,12 +6767,21 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 					 * shallowest.
 					 */
 					if (capacity_orig == target_capacity &&
-					    sysctl_sched_cstate_aware &&
-					    idle_idx >= shallowest_idle_cstate)
-						continue;
-
+					    sysctl_sched_cstate_aware) {
+						if (idle_idx >= shallowest_idle_cstate)
+							continue;
+						/*
+						 * If idle state of cpu is the
+						 * same, select least utilized.
+						 */
+						else if (idle_idx ==
+						    shallowest_idle_cstate &&
+						    best_idle_util <= new_util)
+						    continue;
+					}
 					target_capacity = capacity_orig;
 					shallowest_idle_cstate = idle_idx;
+					best_idle_util = new_util;
 					best_idle_cpu = i;
 					continue;
 				}
