@@ -991,7 +991,7 @@
 		qcom,response-time-us = <6000 6000 4000 4000 2000 2000>;
 		/* pl1 low, pl1 high, pl2 low, pl2 high, pl3 low, pl3 high */
 		qcom,cci-response-time-us = <4000 4000 3000 3000 2000 2000>;
-		qcom,max-cci-freq = <870000>;
+		qcom,max-cci-freq = <883200>;
 	};
 
 	devfreq_spdm_gov {
