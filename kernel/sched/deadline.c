@@ -15,7 +15,6 @@
  *                    Fabio Checconi <fchecconi@gmail.com>
  */
 #include "sched.h"
-#include "walt.h"
 
 #include <linux/slab.h>
 
@@ -749,9 +748,9 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 		 * Nothing relies on rq->lock after this, so its safe to drop
 		 * rq->lock.
 		 */
-		rq_unpin_lock(rq, &rf);
+		lockdep_unpin_lock(&rq->lock, rf.cookie);
 		push_dl_task(rq);
-		rq_repin_lock(rq, &rf);
+		lockdep_repin_lock(&rq->lock, rf.cookie);
 	}
 #endif
 
@@ -948,7 +947,6 @@ void inc_dl_tasks(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 	WARN_ON(!dl_prio(prio));
 	dl_rq->dl_nr_running++;
 	add_nr_running(rq_of_dl_rq(dl_rq), 1);
-	walt_inc_cumulative_runnable_avg(rq_of_dl_rq(dl_rq), dl_task_of(dl_se));
 
 	inc_dl_deadline(dl_rq, deadline);
 	inc_dl_migration(dl_se, dl_rq);
@@ -963,7 +961,6 @@ void dec_dl_tasks(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 	WARN_ON(!dl_rq->dl_nr_running);
 	dl_rq->dl_nr_running--;
 	sub_nr_running(rq_of_dl_rq(dl_rq), 1);
-	walt_dec_cumulative_runnable_avg(rq_of_dl_rq(dl_rq), dl_task_of(dl_se));
 
 	dec_dl_deadline(dl_rq, dl_se->deadline);
 	dec_dl_migration(dl_se, dl_rq);
@@ -1248,7 +1245,7 @@ static struct sched_dl_entity *pick_next_dl_entity(struct rq *rq,
 }
 
 struct task_struct *
-pick_next_task_dl(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
+pick_next_task_dl(struct rq *rq, struct task_struct *prev, struct pin_cookie cookie)
 {
 	struct sched_dl_entity *dl_se;
 	struct task_struct *p;
@@ -1263,9 +1260,9 @@ pick_next_task_dl(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 		 * disabled avoiding further scheduler activity on it and we're
 		 * being very careful to re-start the picking loop.
 		 */
-		rq_unpin_lock(rq, rf);
+		lockdep_unpin_lock(&rq->lock, cookie);
 		pull_dl_task(rq);
-		rq_repin_lock(rq, rf);
+		lockdep_repin_lock(&rq->lock, cookie);
 		/*
 		 * pull_rt_task() can drop (and re-acquire) rq->lock; this
 		 * means a stop task can slip in, in which case we need to
@@ -1630,11 +1627,9 @@ retry:
 		goto retry;
 	}
 
-	next_task->on_rq = TASK_ON_RQ_MIGRATING;
 	deactivate_task(rq, next_task, 0);
 	set_task_cpu(next_task, later_rq->cpu);
 	activate_task(later_rq, next_task, 0);
-	next_task->on_rq = TASK_ON_RQ_QUEUED;
 	ret = 1;
 
 	resched_curr(later_rq);
@@ -1720,11 +1715,9 @@ static void pull_dl_task(struct rq *this_rq)
 
 			resched = true;
 
-			p->on_rq = TASK_ON_RQ_MIGRATING;
 			deactivate_task(src_rq, p, 0);
 			set_task_cpu(p, this_cpu);
 			activate_task(this_rq, p, 0);
-			p->on_rq = TASK_ON_RQ_QUEUED;
 			dmin = p->dl.deadline;
 
 			/* Is there any other task even earlier? */
@@ -1936,10 +1929,6 @@ const struct sched_class dl_sched_class = {
 	.switched_to		= switched_to_dl,
 
 	.update_curr		= update_curr_dl,
-#ifdef CONFIG_SCHED_WALT
-	.fixup_walt_sched_stats	= fixup_walt_sched_stats_common,
-	.fixup_cumulative_runnable_avg = walt_fixup_cumulative_runnable_avg,
-#endif
 };
 
 #ifdef CONFIG_SCHED_DEBUG
