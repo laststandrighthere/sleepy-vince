@@ -102,7 +102,7 @@ static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
 	} else if (sg_policy->next_freq != next_freq) {
 		sg_policy->next_freq = next_freq;
 		sg_policy->work_in_progress = true;
-		irq_work_queue(&sg_policy->irq_work);
+		sched_irq_work_queue(&sg_policy->irq_work);
 	}
 }
 
