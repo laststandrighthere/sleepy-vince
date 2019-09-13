@@ -23,9 +23,6 @@
 #include <asm/cpu.h>
 #include <asm/cputype.h>
 #include <asm/cpufeature.h>
-#include <uapi/linux/psci.h>
-#include <linux/arm-smccc.h>
-#include <linux/psci.h>
 
 static bool __maybe_unused
 is_affected_midr_range(const struct arm64_cpu_capabilities *entry, int scope)
@@ -144,14 +141,23 @@ static void  install_bp_hardening_cb(const struct arm64_cpu_capabilities *entry,
 	__install_bp_hardening_cb(fn, hyp_vecs_start, hyp_vecs_end);
 }
 
+#include <uapi/linux/psci.h>
+#include <linux/arm-smccc.h>
+#include <linux/psci.h>
+
 #ifdef CONFIG_PSCI_BP_HARDENING
+static void psci_ops_get_version(void)
+{
+	psci_ops.get_version();
+}
+
 static int enable_psci_bp_hardening(void *data)
 {
 	const struct arm64_cpu_capabilities *entry = data;
 
 	if (psci_ops.get_version)
 		install_bp_hardening_cb(entry,
-				       psci_ops.get_version,
+				       psci_ops_get_version,
 				       __psci_hyp_bp_inval_start,
 				       __psci_hyp_bp_inval_end);
 	return 0;
