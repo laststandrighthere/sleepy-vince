@@ -3385,7 +3385,6 @@ void walt_sched_init_rq(struct rq *rq)
 
 	rq->walt_stats.cumulative_runnable_avg_scaled = 0;
 	rq->window_start = 0;
-	rq->cum_window_start = 0;
 	rq->walt_stats.nr_big_tasks = 0;
 	rq->cur_irqload = 0;
 	rq->avg_irqload = 0;
