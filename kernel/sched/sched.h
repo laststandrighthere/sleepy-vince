@@ -803,7 +803,6 @@ struct rq {
 	struct walt_sched_stats walt_stats;
 
 	u64 window_start;
-	s64 cum_window_start;
 
 	u64 cur_irqload;
 	u64 avg_irqload;
