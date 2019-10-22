@@ -339,6 +339,14 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &sysctl_sched_group_upmigrate_pct,
 	},
 	{
+		.procname	= "sched_conservative_pl",
+		.data		= &sysctl_sched_conservative_pl,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
 	{
 		.procname	= "sched_many_wakeup_threshold",
 		.data		= &sysctl_sched_many_wakeup_threshold,
