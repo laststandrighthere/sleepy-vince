@@ -185,7 +185,6 @@ static int select_pin_ctl(struct fpc1020_data *fpc1020, const char *name)
 {
 	size_t i;
 	int rc;
-	struct device *dev = fpc1020->dev;
 
 	for (i = 0; i < ARRAY_SIZE(fpc1020->pinctrl_state); i++) {
 		const char *n = pctl_names[i];
@@ -245,8 +244,6 @@ static DEVICE_ATTR(regulator_enable, S_IWUSR, NULL, regulator_enable_set);
 
 static int hw_reset(struct fpc1020_data *fpc1020)
 {
-	int irq_gpio;
-	struct device *dev = fpc1020->dev;
 	int rc = select_pin_ctl(fpc1020, "fpc1020_reset_active");
 
 	if (rc)
