@@ -134,7 +134,7 @@ bool synaptics_gesture_func_on = true;
 int synaptics_gesture_switch (struct input_dev *dev, unsigned int type, unsigned int code, int value)
 {
 
-	unsigned int input ;
+	unsigned int input = 0;
 	if (type == EV_SYN && code == SYN_CONFIG) {
 		if (value == WAKEUP_OFF) {
 			synaptics_gesture_func_on = false;
