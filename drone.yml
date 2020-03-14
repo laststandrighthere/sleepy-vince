@@ -1,0 +1,26 @@
+kind: pipeline
+name: vimb_ci
+
+platform:
+  os: linux
+  arch: amd64
+
+clone:
+  depth: 1
+
+steps:
+  - name: build_vimb
+    image: kdrag0n/debian-kbuild:buster
+    environment:
+      CHANNEL_ID:
+        from_secret: CHANNEL_ID
+      BOT_TOKEN:
+        from_secret: BOT_TOKEN
+      STICKER:
+        from_secret: STICKER
+    commands:
+      - git clone https://github.com/laststandrighthere/scripts.git ci_script
+      - ./ci_script/drone.sh gcc 9 vince aosp
+    when:
+      branch:
+        - 4.9-q
