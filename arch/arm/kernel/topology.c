@@ -43,16 +43,6 @@
  */
 static DEFINE_PER_CPU(unsigned long, cpu_scale) = SCHED_CAPACITY_SCALE;
 
-unsigned long arch_scale_freq_power(struct sched_domain *sd, int cpu)
-{
-	return per_cpu(cpu_scale, cpu);
-}
-
-static void set_power_scale(unsigned int cpu, unsigned long power)
-{
-	per_cpu(cpu_scale, cpu) = power;
-}
-
 unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
 	return per_cpu(cpu_scale, cpu);
@@ -400,23 +390,6 @@ const struct cpumask *cpu_coregroup_mask(int cpu)
 const struct cpumask *cpu_corepower_mask(int cpu)
 {
 	return &cpu_topology[cpu].thread_sibling;
-}
-
-static void update_cpu_power(unsigned int cpu)
-{
-	if (!cpu_capacity(cpu))
-		return;
-
-	set_power_scale(cpu, cpu_capacity(cpu) / middle_capacity);
-
-	pr_info("CPU%u: update cpu_power %lu\n",
-		cpu, arch_scale_freq_power(NULL, cpu));
-}
-
-void update_cpu_power_capacity(int cpu)
-{
-	update_cpu_power(cpu);
-	update_cpu_capacity(cpu);
 }
 
 static void update_siblings_masks(unsigned int cpuid)
