@@ -1617,10 +1617,6 @@ struct task_struct {
 	cputime_t utimescaled, stimescaled;
 #endif
 	cputime_t gtime;
-#ifdef CONFIG_CPU_FREQ_TIMES
-	u64 *time_in_state;
-	unsigned int max_state;
-#endif
 	struct prev_cputime prev_cputime;
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
 	seqcount_t vtime_seqcount;
