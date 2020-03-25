@@ -19,7 +19,6 @@
 
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
-#include <linux/cpufreq_times.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/init.h>
@@ -1835,14 +1834,9 @@ EXPORT_SYMBOL(cpufreq_unregister_notifier);
 unsigned int cpufreq_driver_fast_switch(struct cpufreq_policy *policy,
 					unsigned int target_freq)
 {
-	int ret;
 	target_freq = clamp_val(target_freq, policy->min, policy->max);
 
-        ret = cpufreq_driver->fast_switch(policy, target_freq);
-	if (ret)
-		cpufreq_times_record_transition(policy, ret);
-
-	return ret;
+	return cpufreq_driver->fast_switch(policy, target_freq);
 }
 EXPORT_SYMBOL_GPL(cpufreq_driver_fast_switch);
 
