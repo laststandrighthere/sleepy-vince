@@ -1375,6 +1375,8 @@ config DEBUG_CREDENTIALS
 
 	  If unsure, say N.
 
+source "kernel/rcu/Kconfig.debug"
+
 config DEBUG_WQ_FORCE_RR_CPU
 	bool "Force round-robin CPU selection for unbound work items"
 	depends on DEBUG_KERNEL
