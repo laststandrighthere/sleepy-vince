@@ -11,7 +11,7 @@
 #include <linux/clockchips.h>
 #include <linux/kernel.h>
 #include <linux/mutex.h>
-#include <linux/sched.h>
+#include <linux/sched/idle.h>
 #include <linux/sched/clock.h>
 #include <linux/notifier.h>
 #include <linux/pm_qos.h>
