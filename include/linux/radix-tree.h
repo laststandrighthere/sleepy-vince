@@ -27,6 +27,7 @@
 #include <linux/bug.h>
 #include <linux/kernel.h>
 #include <linux/rcupdate.h>
+#include <linux/spinlock.h>
 
 /*
  * The bottom two bits of the slot determine how the remaining bits in the

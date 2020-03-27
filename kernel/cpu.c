@@ -27,6 +27,7 @@
 #include <linux/relay.h>
 #include <linux/slab.h>
 #include <linux/highmem.h>
+#include <uapi/linux/sched/types.h>
 
 #include <trace/events/power.h>
 #define CREATE_TRACE_POINTS
