@@ -32,6 +32,7 @@
 #include <linux/ctype.h>
 #include <linux/mm.h>
 #include <asm/cacheflush.h>
+#include <uapi/linux/sched/types.h>
 
 #include "kgsl.h"
 #include "kgsl_debugfs.h"
