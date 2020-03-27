@@ -28,6 +28,7 @@
 #include <linux/kmemleak.h>
 #include <linux/kthread.h>
 #include <linux/sched/clock.h>
+#include <uapi/linux/sched/types.h>
 #include <asm/div64.h>
 
 #include <soc/qcom/event_timer.h>
