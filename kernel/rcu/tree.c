@@ -895,7 +895,6 @@ void rcu_irq_exit(void)
 	if (rdtp->dynticks_nmi_nesting)
 		return;
 
-	RCU_LOCKDEP_WARN(!irqs_disabled(), "rcu_irq_exit() invoked with irqs enabled!!!");
 	WARN_ON_ONCE(IS_ENABLED(CONFIG_RCU_EQS_DEBUG) &&
 		     rdtp->dynticks_nesting < 1);
 	if (rdtp->dynticks_nesting <= 1) {
