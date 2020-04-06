@@ -17,6 +17,7 @@
 #include <linux/slab.h>
 #include <linux/sched/cpufreq.h>
 #include <trace/events/power.h>
+#include <linux/cpuset.h>
 
 #include "sched.h"
 
