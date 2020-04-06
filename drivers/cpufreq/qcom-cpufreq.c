@@ -1,19 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /* drivers/cpufreq/qcom-cpufreq.c
  *
  * MSM architecture cpufreq driver
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2007-2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2007-2019, The Linux Foundation. All rights reserved.
  * Author: Mike A. Chan <mikechan@google.com>
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
- * GNU General Public License for more details.
  *
  */
 
@@ -66,8 +58,11 @@ static int set_cpu_freq(struct cpufreq_policy *policy, unsigned int new_freq,
 	rate = clk_round_rate(cpu_clk[policy->cpu], rate);
 	ret = clk_set_rate(cpu_clk[policy->cpu], rate);
 	cpufreq_freq_transition_end(policy, &freqs, ret);
-	if (!ret)
+	if (!ret) {
+		arch_set_freq_scale(policy->related_cpus, new_freq,
+				    policy->cpuinfo.max_freq);
 		trace_cpu_frequency_switch_end(policy->cpu);
+	}
 
 	return ret;
 }
@@ -87,7 +82,7 @@ static int msm_cpufreq_target(struct cpufreq_policy *policy,
 		goto done;
 
 	if (per_cpu(suspend_data, policy->cpu).device_suspended) {
-		pr_debug("cpufreq: cpu%d scheduling frequency change in suspend.\n",
+		pr_debug("cpufreq: cpu%d scheduling frequency change in suspend\n",
 			 policy->cpu);
 		ret = -EFAULT;
 		goto done;
@@ -159,7 +154,8 @@ static int msm_cpufreq_init(struct cpufreq_policy *policy)
 		if (cpu_clk[cpu] == cpu_clk[policy->cpu])
 			cpumask_set_cpu(cpu, policy->cpus);
 
-	ret = cpufreq_table_validate_and_show(policy, table);
+	policy->freq_table = table;
+	ret = cpufreq_table_validate_and_sort(policy);
 	if (ret) {
 		pr_err("cpufreq: failed to get policy min/max\n");
 		return ret;
@@ -180,6 +176,7 @@ static int msm_cpufreq_init(struct cpufreq_policy *policy)
 	pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
 			policy->cpu, cur_freq, table[index].frequency);
 	policy->cur = table[index].frequency;
+	policy->dvfs_possible_from_any_cpu = true;
 
 	return 0;
 }
@@ -274,13 +271,7 @@ static int msm_cpufreq_resume(void)
 			continue;
 		if (policy.cur <= policy.max && policy.cur >= policy.min)
 			continue;
-		ret = cpufreq_update_policy(cpu);
-		if (ret)
-			pr_info("cpufreq: Current frequency violates policy min/max for CPU%d\n",
-			       cpu);
-		else
-			pr_info("cpufreq: Frequency violation fixed for CPU%d\n",
-				cpu);
+		cpufreq_update_policy(cpu);
 	}
 	put_online_cpus();
 
@@ -314,12 +305,12 @@ static struct freq_attr *msm_freq_attr[] = {
 static void msm_cpufreq_ready(struct cpufreq_policy *policy)
 {
 	struct device_node *np, *lmh_node;
-	unsigned int cpu = 0;
+	unsigned int cpu = policy->cpu;
 
-	if (cdev[policy->cpu])
+	if (cdev[cpu])
 		return;
 
-	np = of_cpu_device_node_get(policy->cpu);
+	np = of_cpu_device_node_get(cpu);
 	if (WARN_ON(!np))
 		return;
 
@@ -334,22 +325,11 @@ static void msm_cpufreq_ready(struct cpufreq_policy *policy)
 			goto ready_exit;
 		}
 
-		for_each_cpu(cpu, policy->related_cpus) {
-			cpumask_t cpu_mask  = CPU_MASK_NONE;
-
-			of_node_put(np);
-			np = of_cpu_device_node_get(cpu);
-			if (WARN_ON(!np))
-				return;
-
-			cpumask_set_cpu(cpu, &cpu_mask);
-			cdev[cpu] = of_cpufreq_cooling_register(np, &cpu_mask);
-			if (IS_ERR(cdev[cpu])) {
-				pr_err(
-				"running cpufreq for CPU%d without cooling dev: %ld\n",
-				cpu, PTR_ERR(cdev[cpu]));
-				cdev[cpu] = NULL;
-			}
+		cdev[cpu] = of_cpufreq_cooling_register(policy);
+		if (IS_ERR(cdev[cpu])) {
+			pr_err("running cpufreq for CPU%d without cooling dev: %ld\n",
+			       cpu, PTR_ERR(cdev[cpu]));
+			cdev[cpu] = NULL;
 		}
 	}
 
@@ -359,7 +339,8 @@ ready_exit:
 
 static struct cpufreq_driver msm_cpufreq_driver = {
 	/* lps calculations are handled here. */
-	.flags		= CPUFREQ_STICKY | CPUFREQ_CONST_LOOPS | CPUFREQ_NEED_INITIAL_FREQ_CHECK,
+	.flags		= CPUFREQ_STICKY | CPUFREQ_CONST_LOOPS |
+				CPUFREQ_NEED_INITIAL_FREQ_CHECK,
 	.init		= msm_cpufreq_init,
 	.verify		= msm_cpufreq_verify,
 	.target		= msm_cpufreq_target,
