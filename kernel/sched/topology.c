@@ -4,6 +4,7 @@
 #include <linux/sched.h>
 #include <linux/mutex.h>
 #include <linux/sched/isolation.h>
+#include <linux/cpuset.h>
 
 #include "sched.h"
 
