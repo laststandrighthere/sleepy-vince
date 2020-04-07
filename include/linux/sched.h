@@ -53,6 +53,7 @@
 #include <linux/uidgid.h>
 #include <linux/gfp.h>
 #include <linux/magic.h>
+#include <linux/cgroup-defs.h>
 
 #include <asm/processor.h>
 
@@ -2764,7 +2765,11 @@ static inline void unlock_task_sighand(struct task_struct *tsk,
  * subsystems needing threadgroup stability can hook into for
  * synchronization.
  */
-extern void threadgroup_change_begin(struct task_struct *tsk);
+static inline void threadgroup_change_begin(struct task_struct *tsk)
+{
+	might_sleep();
+	cgroup_threadgroup_change_begin(tsk);
+}
 
 /**
  * threadgroup_change_end - mark the end of changes to a threadgroup
@@ -2772,7 +2777,10 @@ extern void threadgroup_change_begin(struct task_struct *tsk);
  *
  * See threadgroup_change_begin().
  */
-extern void threadgroup_change_end(struct task_struct *tsk);
+static inline void threadgroup_change_end(struct task_struct *tsk)
+{
+	cgroup_threadgroup_change_end(tsk);
+}
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 
