@@ -57,7 +57,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			reg = <0x0>;
 			enable-method = "psci";
-			efficiency = <1024>;
+			capacity-dmips-mhz = <1024>;
 			dynamic-power-coefficient = <100>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
@@ -83,7 +83,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x1>;
-			efficiency = <1024>;
+			capacity-dmips-mhz = <1024>;
 			dynamic-power-coefficient = <100>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
@@ -103,7 +103,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x2>;
-			efficiency = <1024>;
+			capacity-dmips-mhz = <1024>;
 			dynamic-power-coefficient = <100>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
@@ -123,7 +123,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x3>;
-			efficiency = <1024>;
+			capacity-dmips-mhz = <1024>;
 			dynamic-power-coefficient = <100>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
@@ -143,7 +143,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x100>;
-			efficiency = <1126>;
+			capacity-dmips-mhz = <1024>;
 			dynamic-power-coefficient = <110>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
@@ -169,7 +169,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x101>;
-			efficiency = <1126>;
+			capacity-dmips-mhz = <1024>;
 			dynamic-power-coefficient = <110>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
@@ -189,7 +189,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x102>;
-			efficiency = <1126>;
+			capacity-dmips-mhz = <1024>;
 			dynamic-power-coefficient = <110>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
@@ -209,7 +209,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x103>;
-			efficiency = <1126>;
+			capacity-dmips-mhz = <1024>;
 			dynamic-power-coefficient = <110>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
