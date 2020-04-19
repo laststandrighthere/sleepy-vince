@@ -11,3 +11,4 @@
 #include "vince-thermal.dtsi"
 #include "vince-cpu.dtsi"
 #include "vince-regulator.dtsi"
+#include "vince-gpu.dtsi"
