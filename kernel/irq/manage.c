@@ -534,15 +534,9 @@ void __enable_irq(struct irq_desc *desc)
 			goto err_out;
 		/* Prevent probing on this irq: */
 		irq_settings_set_noprobe(desc);
-		/*
-		 * Call irq_startup() not irq_enable() here because the
-		 * interrupt might be marked NOAUTOEN. So irq_startup()
-		 * needs to be invoked when it gets enabled the first
-		 * time. If it was already started up, then irq_startup()
-		 * will invoke irq_enable() under the hood.
-		 */
-		irq_startup(desc, true);
-		break;
+		irq_enable(desc);
+		check_irq_resend(desc);
+		/* fall-through */
 	}
 	default:
 		desc->depth--;
@@ -1230,10 +1224,8 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 		 * set the trigger type must match. Also all must
 		 * agree on ONESHOT.
 		 */
-		unsigned int oldtype = irqd_get_trigger_type(&desc->irq_data);
-
 		if (!((old->flags & new->flags) & IRQF_SHARED) ||
-		    (oldtype != (new->flags & IRQF_TRIGGER_MASK)) ||
+		    ((old->flags ^ new->flags) & IRQF_TRIGGER_MASK) ||
 		    ((old->flags ^ new->flags) & IRQF_ONESHOT))
 			goto mismatch;
 
@@ -1348,19 +1340,11 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 		if (new->flags & IRQF_ONESHOT)
 			desc->istate |= IRQS_ONESHOT;
 
-		if (irq_settings_can_autoenable(desc)) {
+		if (irq_settings_can_autoenable(desc))
 			irq_startup(desc, true);
-		} else {
-			/*
-			 * Shared interrupts do not go well with disabling
-			 * auto enable. The sharing interrupt might request
-			 * it while it's still disabled and then wait for
-			 * interrupts forever.
-			 */
-			WARN_ON_ONCE(new->flags & IRQF_SHARED);
+		else
 			/* Undo nested disables: */
 			desc->depth = 1;
-		}
 
 		/* Exclude IRQ from balancing if requested */
 		if (new->flags & IRQF_NOBALANCING) {
@@ -1587,7 +1571,7 @@ void remove_irq(unsigned int irq, struct irqaction *act)
 	struct irq_desc *desc = irq_to_desc(irq);
 
 	if (desc && !WARN_ON(irq_settings_is_per_cpu_devid(desc)))
-		__free_irq(irq, act->dev_id);
+	    __free_irq(irq, act->dev_id);
 }
 EXPORT_SYMBOL_GPL(remove_irq);
 
@@ -1604,27 +1588,20 @@ EXPORT_SYMBOL_GPL(remove_irq);
  *	have completed.
  *
  *	This function must not be called from interrupt context.
- *
- *	Returns the devname argument passed to request_irq.
  */
-const void *free_irq(unsigned int irq, void *dev_id)
+void free_irq(unsigned int irq, void *dev_id)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
-	struct irqaction *action;
-	const char *devname;
 
 	if (!desc || WARN_ON(irq_settings_is_per_cpu_devid(desc)))
-		return NULL;
+		return;
 
 #ifdef CONFIG_SMP
 	if (WARN_ON(desc->affinity_notify))
 		desc->affinity_notify = NULL;
 #endif
 
-	action = __free_irq(irq, dev_id);
-	devname = action->name;
-	kfree(action);
-	return devname;
+	kfree(__free_irq(irq, dev_id));
 }
 EXPORT_SYMBOL(free_irq);
 

@@ -7,7 +7,7 @@
  * This file contains the core interrupt handling code, for irq-chip
  * based architectures.
  *
- * Detailed information is available in Documentation/core-api/genericirq.rst
+ * Detailed information is available in Documentation/DocBook/genericirq
  */
 
 #include <linux/irq.h>
@@ -185,64 +185,37 @@ static void irq_state_set_masked(struct irq_desc *desc)
 	irqd_set(&desc->irq_data, IRQD_IRQ_MASKED);
 }
 
-static void irq_state_clr_started(struct irq_desc *desc)
-{
-	irqd_clear(&desc->irq_data, IRQD_IRQ_STARTED);
-}
-
-static void irq_state_set_started(struct irq_desc *desc)
-{
-	irqd_set(&desc->irq_data, IRQD_IRQ_STARTED);
-}
-
 int irq_startup(struct irq_desc *desc, bool resend)
 {
 	int ret = 0;
 
+	irq_state_clr_disabled(desc);
 	desc->depth = 0;
 
-	if (irqd_is_started(&desc->irq_data)) {
-		irq_enable(desc);
+	irq_domain_activate_irq(&desc->irq_data);
+	if (desc->irq_data.chip->irq_startup) {
+		ret = desc->irq_data.chip->irq_startup(&desc->irq_data);
+		irq_state_clr_masked(desc);
 	} else {
-		irq_domain_activate_irq(&desc->irq_data);
-		if (desc->irq_data.chip->irq_startup) {
-			ret = desc->irq_data.chip->irq_startup(&desc->irq_data);
-			irq_state_clr_disabled(desc);
-			irq_state_clr_masked(desc);
-		} else {
-			irq_enable(desc);
-		}
-		irq_state_set_started(desc);
+		irq_enable(desc);
 	}
-
 	if (resend)
 		check_irq_resend(desc);
-
 	return ret;
 }
 
-static void __irq_disable(struct irq_desc *desc, bool mask);
-
 void irq_shutdown(struct irq_desc *desc)
 {
-	if (irqd_is_started(&desc->irq_data)) {
-		desc->depth = 1;
-		if (desc->irq_data.chip->irq_shutdown) {
-			desc->irq_data.chip->irq_shutdown(&desc->irq_data);
-			irq_state_set_disabled(desc);
-			irq_state_set_masked(desc);
-		} else {
-			__irq_disable(desc, true);
-		}
-		irq_state_clr_started(desc);
-	}
-	/*
-	 * This must be called even if the interrupt was never started up,
-	 * because the activation can happen before the interrupt is
-	 * available for request/startup. It has it's own state tracking so
-	 * it's safe to call it unconditionally.
-	 */
+	irq_state_set_disabled(desc);
+	desc->depth = 1;
+	if (desc->irq_data.chip->irq_shutdown)
+		desc->irq_data.chip->irq_shutdown(&desc->irq_data);
+	else if (desc->irq_data.chip->irq_disable)
+		desc->irq_data.chip->irq_disable(&desc->irq_data);
+	else
+		desc->irq_data.chip->irq_mask(&desc->irq_data);
 	irq_domain_deactivate_irq(&desc->irq_data);
+	irq_state_set_masked(desc);
 }
 
 void irq_enable(struct irq_desc *desc)
@@ -253,17 +226,6 @@ void irq_enable(struct irq_desc *desc)
 	else
 		desc->irq_data.chip->irq_unmask(&desc->irq_data);
 	irq_state_clr_masked(desc);
-}
-
-static void __irq_disable(struct irq_desc *desc, bool mask)
-{
-	irq_state_set_disabled(desc);
-	if (desc->irq_data.chip->irq_disable) {
-		desc->irq_data.chip->irq_disable(&desc->irq_data);
-		irq_state_set_masked(desc);
-	} else if (mask) {
-		mask_irq(desc);
-	}
 }
 
 /**
@@ -288,7 +250,13 @@ static void __irq_disable(struct irq_desc *desc, bool mask)
  */
 void irq_disable(struct irq_desc *desc)
 {
-	__irq_disable(desc, irq_settings_disable_unlazy(desc));
+	irq_state_set_disabled(desc);
+	if (desc->irq_data.chip->irq_disable) {
+		desc->irq_data.chip->irq_disable(&desc->irq_data);
+		irq_state_set_masked(desc);
+	} else if (irq_settings_disable_unlazy(desc)) {
+		mask_irq(desc);
+	}
 }
 
 void irq_percpu_enable(struct irq_desc *desc, unsigned int cpu)
@@ -380,10 +348,7 @@ void handle_nested_irq(unsigned int irq)
 	irqd_set(&desc->irq_data, IRQD_IRQ_INPROGRESS);
 	raw_spin_unlock_irq(&desc->lock);
 
-	action_ret = IRQ_NONE;
-	for_each_action_of_desc(desc, action)
-		action_ret |= action->thread_fn(action->irq, action->dev_id);
-
+	action_ret = action->thread_fn(action->irq, action->dev_id);
 	if (!noirqdebug)
 		note_interrupt(desc, action_ret);
 
@@ -943,13 +908,6 @@ void irq_modify_status(unsigned int irq, unsigned long clr, unsigned long set)
 
 	if (!desc)
 		return;
-
-	/*
-	 * Warn when a driver sets the no autoenable flag on an already
-	 * active interrupt.
-	 */
-	WARN_ON_ONCE(!desc->depth && (set & _IRQ_NOAUTOEN));
-
 	irq_settings_clr_and_set(desc, clr, set);
 
 	trigger = irqd_get_trigger_type(&desc->irq_data);

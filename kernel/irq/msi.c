@@ -14,7 +14,9 @@
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 #include <linux/msi.h>
-#include <linux/slab.h>
+
+/* Temparory solution for building, will be removed later */
+#include <linux/pci.h>
 
 /**
  * alloc_msi_entry - Allocate an initialize msi_entry
@@ -265,19 +267,13 @@ struct irq_domain *msi_create_irq_domain(struct fwnode_handle *fwnode,
 					 struct msi_domain_info *info,
 					 struct irq_domain *parent)
 {
-	struct irq_domain *domain;
-
 	if (info->flags & MSI_FLAG_USE_DEF_DOM_OPS)
 		msi_domain_update_dom_ops(info);
 	if (info->flags & MSI_FLAG_USE_DEF_CHIP_OPS)
 		msi_domain_update_chip_ops(info);
 
-	domain = irq_domain_create_hierarchy(parent, 0, 0, fwnode,
+	return irq_domain_create_hierarchy(parent, 0, 0, fwnode,
 					   &msi_domain_ops, info);
-	if (domain && info->chip && info->chip->name)
-		domain->name = info->chip->name;
-
-	return domain;
 }
 
 int msi_domain_prepare_irqs(struct irq_domain *domain, struct device *dev,
