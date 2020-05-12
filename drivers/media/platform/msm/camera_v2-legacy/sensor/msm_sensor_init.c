@@ -41,20 +41,30 @@ static const struct v4l2_subdev_internal_ops msm_sensor_init_internal_ops;
 
 static int msm_sensor_wait_for_probe_done(struct msm_sensor_init_t *s_init)
 {
+#ifndef CONFIG_MACH_XIAOMI_E7
 	int rc;
 	int tm = 10000;
+#endif
 	if (s_init->module_init_status == 1) {
 		CDBG("msm_cam_get_module_init_status -2\n");
 		return 0;
 	}
+#ifdef CONFIG_MACH_XIAOMI_E7
+	wait_event(s_init->state_wait, (s_init->module_init_status == 1));
+#else
 	rc = wait_event_timeout(s_init->state_wait,
 		(s_init->module_init_status == 1), msecs_to_jiffies(tm));
 	if (rc == 0) {
 		pr_err("%s:%d wait timeout\n", __func__, __LINE__);
 		rc = -1;
 	}
+#endif
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+	return 0;
+#else
 	return rc;
+#endif
 }
 
 /* Static function definition */
