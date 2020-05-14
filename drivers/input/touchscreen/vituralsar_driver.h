@@ -1,4 +1,3 @@
-
 #ifndef VITURALSAR_DRIVER_H
 #define	VITURALSAR_DRIVER_H
 
@@ -36,12 +35,11 @@ static void __exit virtualsar_exit(void);
 static int virtualsar_probe(struct i2c_client*client,
 		const struct i2c_device_id*id);
 
-#define SAR_INT_TRIGGER    2
-#define SAR_IRQ_TAB                     {IRQ_TYPE_EDGE_RISING, IRQ_TYPE_EDGE_FALLING,IRQ_TYPE_EDGE_BOTH, IRQ_TYPE_LEVEL_LOW, IRQ_TYPE_LEVEL_HIGH}
+#define SAR_INT_TRIGGER	2
+#define SAR_IRQ_TAB	{IRQ_TYPE_EDGE_RISING, IRQ_TYPE_EDGE_FALLING,IRQ_TYPE_EDGE_BOTH, IRQ_TYPE_LEVEL_LOW, IRQ_TYPE_LEVEL_HIGH}
 
 static const char *sar_name = "vitural-sar";
 static const char *sar_input_phys = "input/sar";
-
 
 struct vituralsar_data {
  	spinlock_t irq_lock;
@@ -53,11 +51,11 @@ struct vituralsar_data {
 };
 
 struct gpio_keys_button gpio_key = {
-		 .code              = KEY_F24,
-		 .type              = EV_KEY,
-		 .wakeup            = 1,
-		 .debounce_interval = 0,
-		 .can_disable       = true,
+	 .code              = KEY_F24,
+	 .type              = EV_KEY,
+	 .wakeup            = 1,
+	 .debounce_interval = 0,
+	 .can_disable       = true,
 };
 
 static struct i2c_driver virtualsar_driver = {
