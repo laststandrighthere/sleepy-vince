@@ -20,7 +20,6 @@
 ** =============================================================================
 */
 
-#define DEBUG
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -1826,7 +1825,8 @@ void tas2557_fw_ready(const struct firmware *pFW, void *pContext)
 
 end:
 
-	printk("ready end !");
+	pr_debug("ready end !");
+
 #ifdef CONFIG_TAS2557_CODEC
 	mutex_unlock(&pTAS2557->codec_lock);
 #endif
