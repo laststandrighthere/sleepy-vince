@@ -31,12 +31,21 @@
 #include "mdss_panel.h"
 #include "mdss_mdp.h"
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+#define STATUS_CHECK_INTERVAL_MS 1000
+#else
 #define STATUS_CHECK_INTERVAL_MS 5000
+#endif
 #define STATUS_CHECK_INTERVAL_MIN_MS 50
 #define DSI_STATUS_CHECK_INIT -1
 #define DSI_STATUS_CHECK_DISABLE 1
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+uint32_t interval = STATUS_CHECK_INTERVAL_MS;
+#else
 static uint32_t interval = STATUS_CHECK_INTERVAL_MS;
+#endif
+
 static int32_t dsi_status_disable = DSI_STATUS_CHECK_INIT;
 struct dsi_status_data *pstatus_data;
 
@@ -266,9 +275,9 @@ void __exit mdss_dsi_status_exit(void)
 }
 
 module_param_call(interval, param_set_interval, param_get_uint,
-						&interval, 0644);
+			&interval, 0644);
 MODULE_PARM_DESC(interval,
-	"Duration in milliseconds to send BTA command for DSI status check");
+		"Duration in milliseconds to send BTA command for DSI status check");
 
 module_param_call(dsi_status_disable, param_dsi_status_disable, param_get_uint,
 						&dsi_status_disable, 0644);

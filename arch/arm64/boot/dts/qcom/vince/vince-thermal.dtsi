@@ -1,0 +1,16 @@
+&thermal_zones {
+	case-therm-step {
+		trips {
+			modem_trip0: modem-trip0 {
+				temperature = <70000>;
+			};
+			modem_trip1: modem-trip1 {
+				temperature = <72000>;
+			};
+			modem_trip2: modem-trip2 {
+				temperature = <75000>;
+				type = "critical";
+			};
+		};
+	};
+};

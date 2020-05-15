@@ -239,10 +239,17 @@ enum fg_mem_data_index {
 
 static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	/*       ID                    Address, Offset, Value*/
+#ifdef CONFIG_MACH_XIAOMI_E7
+	SETTING(SOFT_COLD,       0x454,   0,      150),
+	SETTING(SOFT_HOT,        0x454,   1,      450),
+	SETTING(HARD_COLD,       0x454,   2,      0),
+	SETTING(HARD_HOT,        0x454,   3,      550),
+#else
 	SETTING(SOFT_COLD,       0x454,   0,      100),
 	SETTING(SOFT_HOT,        0x454,   1,      400),
 	SETTING(HARD_COLD,       0x454,   2,      50),
 	SETTING(HARD_HOT,        0x454,   3,      450),
+#endif
 	SETTING(RESUME_SOC,      0x45C,   1,      0),
 	SETTING(BCL_LM_THRESHOLD, 0x47C,   2,      50),
 	SETTING(BCL_MH_THRESHOLD, 0x47C,   3,      752),
@@ -250,7 +257,11 @@ static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	SETTING(CHG_TERM_CURRENT, 0x4F8,   2,      250),
 	SETTING(IRQ_VOLT_EMPTY,	 0x458,   3,      3100),
 	SETTING(CUTOFF_VOLTAGE,	 0x40C,   0,      3200),
+#ifdef CONFIG_MACH_XIAOMI_E7
+	SETTING(VBAT_EST_DIFF,	 0x000,   0,      200),
+#else
 	SETTING(VBAT_EST_DIFF,	 0x000,   0,      30),
+#endif
 	SETTING(DELTA_SOC,	 0x450,   3,      1),
 	SETTING(BATT_LOW,	 0x458,   0,      4200),
 	SETTING(THERM_DELAY,	 0x4AC,   3,      0),
@@ -332,7 +343,11 @@ module_param_named(
 	battery_type, fg_batt_type, charp, 00600
 );
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+static int fg_sram_update_period_ms = 3000;
+#else
 static int fg_sram_update_period_ms = 30000;
+#endif
 module_param_named(
 	sram_update_period_ms, fg_sram_update_period_ms, int, 00600
 );
@@ -2026,10 +2041,12 @@ static void fg_handle_battery_insertion(struct fg_chip *chip)
 }
 
 
+#ifndef CONFIG_MACH_XIAOMI_E7
 static int soc_to_setpoint(int soc)
 {
 	return DIV_ROUND_CLOSEST(soc * 255, 100);
 }
+#endif
 
 static void batt_to_setpoint_adc(int vbatt_mv, u8 *data)
 {
@@ -4028,7 +4045,12 @@ static void status_change_work(struct work_struct *work)
 
 	if (chip->status == POWER_SUPPLY_STATUS_FULL) {
 		if (capacity >= 99 && chip->hold_soc_while_full
+#ifdef CONFIG_MACH_XIAOMI_E7
+				&& (chip->health == POWER_SUPPLY_HEALTH_GOOD
+				|| chip->health == POWER_SUPPLY_HEALTH_COOL)) {
+#else
 				&& chip->health == POWER_SUPPLY_HEALTH_GOOD) {
+#endif
 			if (fg_debug_mask & FG_STATUS)
 				pr_info("holding soc at 100\n");
 			chip->charge_full = true;
@@ -6291,6 +6313,51 @@ fail:
 	return -EINVAL;
 }
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+#define REDO_BATID_DURING_FIRST_EST BIT(4)
+static void fg_hw_restart(struct fg_chip *chip)
+{
+	int rc = 0;
+	int batt_id = get_sram_prop_now(chip, FG_DATA_BATT_ID);
+	u8 reg = 0x80;
+	u8 data[4];
+
+	pr_debug("fg_hw_restart old battery id = %d\n",batt_id);
+
+	fg_masked_write(chip, 0x4150,reg, reg, 1);
+	fg_masked_write(chip, chip->soc_base + SOC_RESTART, 0xFF, 0, 1);
+
+	mdelay(5);
+
+	reg = REDO_BATID_DURING_FIRST_EST | REDO_FIRST_ESTIMATE;
+	fg_masked_write(chip, chip->soc_base + SOC_RESTART, reg, reg, 1);
+
+	mdelay(5);
+
+	reg = REDO_BATID_DURING_FIRST_EST | REDO_FIRST_ESTIMATE | RESTART_GO;
+	fg_masked_write(chip, chip->soc_base + SOC_RESTART, reg, reg, 1);
+
+	mdelay(1000);
+
+	fg_masked_write(chip, chip->soc_base + SOC_RESTART, 0xFF, 0, 1);
+	fg_masked_write(chip, 0x4150,0x80, 0, 1);
+
+	mdelay(2000);
+
+	rc = fg_mem_read(chip, data, fg_data[FG_DATA_BATT_ID].address,
+		fg_data[FG_DATA_BATT_ID].len, fg_data[FG_DATA_BATT_ID].offset, 0);
+
+	if (rc)
+		pr_debug("Failed to get sram battery id data\n");
+	else
+		fg_data[FG_DATA_BATT_ID].value = data[0] * LSB_8B;
+
+	batt_id = get_sram_prop_now(chip, FG_DATA_BATT_ID);
+
+	pr_debug("fg_hw_restart new batt_id=%d\n",batt_id);
+}
+#endif /* CONFIG_MACH_XIAOMI_E7 */
+
 #define FG_PROFILE_LEN			128
 #define PROFILE_COMPARE_LEN		32
 #define THERMAL_COEFF_ADDR		0x444
@@ -6299,12 +6366,38 @@ fail:
 static int fg_batt_profile_init(struct fg_chip *chip)
 {
 	int rc = 0, ret;
+#ifdef CONFIG_MACH_XIAOMI_E7
+	int len, i;
+	int batts_id_ohm[3] = {24000,40000, 50000};
+	int delta, limit, batt_id = 0, match = 0;
+	bool in_range = false;
+#else
 	int len, batt_id;
+#endif
 	struct device_node *node = chip->pdev->dev.of_node;
 	struct device_node *batt_node, *profile_node;
 	const char *data, *batt_type_str;
 	bool tried_again = false, vbat_in_range, profiles_same;
 	u8 reg = 0;
+
+#ifdef CONFIG_MACH_XIAOMI_E7
+	batt_id = get_sram_prop_now(chip, FG_DATA_BATT_ID);
+
+	for (i = 0; i < 3; i++) {
+		delta = abs(batts_id_ohm[i] - batt_id);
+		limit = (batts_id_ohm[i] / 20);
+
+		if (batts_id_ohm[i] == 24000)
+			limit += 800;
+
+		in_range = (delta <= limit);
+		if (!in_range)
+			match = 1;
+	}
+
+	if (match == 0)
+		fg_hw_restart(chip);
+#endif /* CONFIG_MACH_XIAOMI_E7 */
 
 wait:
 	fg_stay_awake(&chip->profile_wakeup_source);
@@ -6727,6 +6820,12 @@ static void charge_full_work(struct work_struct *work)
 		pr_info("wrote %06x into soc full\n", bsoc);
 	}
 	fg_mem_release(chip);
+
+#ifdef CONFIG_MACH_XIAOMI_E7
+	msleep(200);
+	get_monotonic_soc_raw(chip);
+#endif
+
 	/*
 	 * wait one cycle to make sure the soc is updated before clearing
 	 * the soc mask bit
@@ -8033,7 +8132,11 @@ static int fg_common_hw_init(struct fg_chip *chip)
 	}
 
 	rc = fg_mem_masked_write(chip, settings[FG_MEM_DELTA_SOC].address, 0xFF,
+#ifdef CONFIG_MACH_XIAOMI_E7
+			1,
+#else
 			soc_to_setpoint(settings[FG_MEM_DELTA_SOC].value),
+#endif
 			settings[FG_MEM_DELTA_SOC].offset);
 	if (rc) {
 		pr_err("failed to write delta soc rc=%d\n", rc);
@@ -8671,6 +8774,49 @@ done:
 	fg_cleanup(chip);
 }
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+#define SOC_LOW_PWR_CFG 0xF5
+#define LO_FRQ_CLKSWITCH_EN BIT(0)
+
+static void fg_adc_clk_change(struct fg_chip *chip)
+{
+	int rc = 0;
+	u8 reg = 0;
+
+	chip->fg_restarting = true;
+
+	rc = fg_read(chip, &reg, chip->soc_base + SOC_LOW_PWR_CFG, 1);
+	if (rc) {
+		pr_err(":%s failed to read SOC_LOW_PWR_CFG\n",__func__);
+
+	}
+	usleep_range(5000,6000);
+
+	rc = fg_sec_masked_write(chip, chip->soc_base +
+		SOC_LOW_PWR_CFG, LO_FRQ_CLKSWITCH_EN, 1, 1);
+	if (rc) {
+		pr_err(":%s failed to change FG ADC Clk\n",__func__);
+		goto adc_clk_change_fail;
+	}
+	usleep_range(5000,6000);
+
+	rc = fg_read(chip, &reg, chip->soc_base + SOC_LOW_PWR_CFG, 1);
+	if (rc) {
+		pr_err(":%s failed to read SOC_LOW_PWR_CFG\n",__func__);
+		goto adc_clk_change_fail;
+	}
+
+	chip->fg_restarting = false;
+
+	pr_debug(":%s Success change FG ADC Clk\n",__func__);
+
+	return;
+
+adc_clk_change_fail:
+	chip->fg_restarting = false;
+}
+#endif /* CONFIG_MACH_XIAOMI_E7 */
+
 static int fg_probe(struct platform_device *pdev)
 {
 	struct device *dev = &(pdev->dev);
@@ -8860,6 +9006,10 @@ static int fg_probe(struct platform_device *pdev)
 		pr_err("failed to clear interrupts %d\n", rc);
 		goto of_init_fail;
 	}
+
+#ifdef CONFIG_MACH_XIAOMI_E7
+	fg_adc_clk_change(chip);
+#endif
 
 	rc = fg_init_irqs(chip);
 	if (rc) {
