@@ -448,13 +448,21 @@ module_param_named(
 	int, 00600
 );
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+static int smbchg_default_hvdcp_icl_ma = 2500;
+#else
 static int smbchg_default_hvdcp_icl_ma = 1800;
+#endif
 module_param_named(
 	default_hvdcp_icl_ma, smbchg_default_hvdcp_icl_ma,
 	int, 00600
 );
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+static int smbchg_default_hvdcp3_icl_ma = 2500;
+#else
 static int smbchg_default_hvdcp3_icl_ma = 3000;
+#endif
 module_param_named(
 	default_hvdcp3_icl_ma, smbchg_default_hvdcp3_icl_ma,
 	int, 00600
@@ -477,6 +485,10 @@ module_param_named(
 	wipower_dcin_interval, wipower_dcin_interval,
 	int, 00600
 );
+
+#ifdef CONFIG_MACH_XIAOMI_E7
+static int hvdcp_type;
+#endif
 
 #define WIPOWER_DEFAULT_HYSTERISIS_UV	250000
 static int wipower_dcin_hyst_uv = WIPOWER_DEFAULT_HYSTERISIS_UV;
@@ -1094,6 +1106,7 @@ static int get_prop_batt_resistance_id(struct smbchg_chip *chip)
 	return rbatt;
 }
 
+#ifndef CONFIG_MACH_XIAOMI_E7
 #define DEFAULT_BATT_FULL_CHG_CAPACITY	0
 static int get_prop_batt_full_charge(struct smbchg_chip *chip)
 {
@@ -1106,6 +1119,7 @@ static int get_prop_batt_full_charge(struct smbchg_chip *chip)
 	}
 	return bfc;
 }
+#endif
 
 #define DEFAULT_BATT_VOLTAGE_NOW	0
 static int get_prop_batt_voltage_now(struct smbchg_chip *chip)
@@ -2890,6 +2904,10 @@ static int smbchg_system_temp_level_set(struct smbchg_chip *chip,
 	int rc = 0;
 	int prev_therm_lvl;
 	int thermal_icl_ma;
+#ifdef CONFIG_MACH_XIAOMI_E7
+	unsigned int hvdcp_thermal_mitigation[7] =
+			{2500, 2500, 1500, 1000, 1000, 500, 0};
+#endif
 
 	if (!chip->thermal_mitigation) {
 		dev_err(chip->dev, "Thermal mitigation not supported\n");
@@ -2944,8 +2962,14 @@ static int smbchg_system_temp_level_set(struct smbchg_chip *chip,
 			pr_err("Couldn't disable DC thermal ICL vote rc=%d\n",
 				rc);
 	} else {
-		thermal_icl_ma =
-			(int)chip->thermal_mitigation[chip->therm_lvl_sel];
+#ifdef CONFIG_MACH_XIAOMI_E7
+		if (hvdcp_type == POWER_SUPPLY_TYPE_USB_HVDCP ||
+				hvdcp_type == POWER_SUPPLY_TYPE_USB_HVDCP_3)
+			thermal_icl_ma = (int)hvdcp_thermal_mitigation[chip->therm_lvl_sel];
+		else
+#endif
+			thermal_icl_ma = (int)chip->thermal_mitigation[chip->therm_lvl_sel];
+
 		rc = vote(chip->usb_icl_votable, THERMAL_ICL_VOTER, true,
 					thermal_icl_ma);
 		if (rc < 0)
@@ -4462,6 +4486,11 @@ static int smbchg_set_optimal_charging_mode(struct smbchg_chip *chip, int type)
 
 #define DEFAULT_SDP_MA		100
 #define DEFAULT_CDP_MA		1500
+
+#ifdef CONFIG_MACH_XIAOMI_E7
+enum power_supply_type hvdcp_flag = 0;
+#endif
+
 static int smbchg_change_usb_supply_type(struct smbchg_chip *chip,
 						enum power_supply_type type)
 {
@@ -4480,6 +4509,9 @@ static int smbchg_change_usb_supply_type(struct smbchg_chip *chip,
 	 * modes, skip all BC 1.2 current if external typec is supported.
 	 * Note: for SDP supporting current based on USB notifications.
 	 */
+#ifdef CONFIG_MACH_XIAOMI_E7
+	hvdcp_type = type;
+#endif
 	if (chip->typec_psy && (type != POWER_SUPPLY_TYPE_USB))
 		current_limit_ma = chip->typec_current_ma;
 	else if (type == POWER_SUPPLY_TYPE_USB)
@@ -4493,6 +4525,9 @@ static int smbchg_change_usb_supply_type(struct smbchg_chip *chip,
 	else
 		current_limit_ma = smbchg_default_dcp_icl_ma;
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+	hvdcp_flag = type;
+#endif
 	pr_smb(PR_STATUS, "Type %d: setting mA = %d\n",
 		type, current_limit_ma);
 	rc = vote(chip->usb_icl_votable, PSY_ICL_VOTER, true,
@@ -5913,6 +5948,9 @@ static enum power_supply_property smbchg_battery_properties[] = {
 	POWER_SUPPLY_PROP_CHARGING_ENABLED,
 	POWER_SUPPLY_PROP_CHARGE_TYPE,
 	POWER_SUPPLY_PROP_CAPACITY,
+#ifdef CONFIG_MACH_XIAOMI_E7
+	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+#endif
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL,
@@ -6092,7 +6130,11 @@ static int smbchg_battery_get_property(struct power_supply *psy,
 		val->intval = get_prop_batt_health(chip);
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
+#ifdef CONFIG_MACH_XIAOMI_E7
+		val->intval = POWER_SUPPLY_TECHNOLOGY_LIPO;
+#else
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_FLASH_CURRENT_MAX:
 		val->intval = smbchg_calc_max_flash_current(chip);
@@ -6126,8 +6168,17 @@ static int smbchg_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_RESISTANCE_ID:
 		val->intval = get_prop_batt_resistance_id(chip);
 		break;
+#ifdef CONFIG_MACH_XIAOMI_E7
+	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+		val->intval = 4000000;
+		break;
+#endif
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
+#ifdef CONFIG_MACH_XIAOMI_E7
+		val->intval = 4000000;
+#else
 		val->intval = get_prop_batt_full_charge(chip);
+#endif
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
 		val->intval = get_prop_batt_temp(chip);
@@ -6303,6 +6354,19 @@ static irqreturn_t batt_warm_handler(int irq, void *_chip)
 {
 	struct smbchg_chip *chip = _chip;
 	u8 reg = 0;
+#ifdef CONFIG_MACH_XIAOMI_E7
+	int rc;
+
+	if (chip->float_voltage_comp != -EINVAL) {
+		rc = smbchg_float_voltage_comp_set(chip,
+				chip->float_voltage_comp);
+		if (rc < 0)
+			dev_err(chip->dev,
+				"Couldn't set float voltage comp rc = %d\n", rc);
+		pr_smb(PR_STATUS, "set float voltage comp to %d\n",
+				chip->float_voltage_comp);
+	}
+#endif
 
 	smbchg_read(chip, &reg, chip->bat_if_base + RT_STS, 1);
 	chip->batt_warm = !!(reg & HOT_BAT_SOFT_BIT);
@@ -6319,6 +6383,13 @@ static irqreturn_t batt_cool_handler(int irq, void *_chip)
 {
 	struct smbchg_chip *chip = _chip;
 	u8 reg = 0;
+#ifdef CONFIG_MACH_XIAOMI_E7
+	int rc;
+
+	rc = smbchg_float_voltage_comp_set(chip,0);
+	if (rc < 0)
+		dev_err(chip->dev, "Couldn't set float voltage comp rc = %d\n",rc);
+#endif
 
 	smbchg_read(chip, &reg, chip->bat_if_base + RT_STS, 1);
 	chip->batt_cool = !!(reg & COLD_BAT_SOFT_BIT);
@@ -7526,7 +7597,11 @@ err:
 }
 
 #define DEFAULT_VLED_MAX_UV		3500000
+#ifdef CONFIG_MACH_XIAOMI_E7
+#define DEFAULT_FCC_MA			2500
+#else
 #define DEFAULT_FCC_MA			2000
+#endif
 #define DEFAULT_NUM_OF_PULSE_ALLOWED	20
 static int smb_parse_dt(struct smbchg_chip *chip)
 {
@@ -8416,6 +8491,10 @@ static int smbchg_probe(struct platform_device *pdev)
 		dev_err(chip->dev, "Error parsing DT peripherals: %d\n", rc);
 		goto votables_cleanup;
 	}
+
+#ifdef CONFIG_MACH_XIAOMI_E7
+	chip->hvdcp_not_supported = false;
+#endif
 
 	rc = smbchg_check_chg_version(chip);
 	if (rc) {

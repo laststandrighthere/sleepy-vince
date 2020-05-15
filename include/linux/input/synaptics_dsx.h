@@ -34,7 +34,11 @@
 #ifndef _SYNAPTICS_DSX_H_
 #define _SYNAPTICS_DSX_H_
 
+#ifdef CONFIG_MACH_XIAOMI_E7
+#define PLATFORM_DRIVER_NAME "synaptics_dsx_v21"
+#else
 #define PLATFORM_DRIVER_NAME "synaptics_dsx"
+#endif
 #define STYLUS_DRIVER_NAME "synaptics_dsx_stylus"
 #define ACTIVE_PEN_DRIVER_NAME "synaptics_dsx_active_pen"
 #define PROXIMITY_DRIVER_NAME "synaptics_dsx_proximity"
@@ -85,12 +89,18 @@ struct synaptics_dsx_board_data {
 	bool x_flip;
 	bool y_flip;
 	bool swap_axes;
+#ifdef CONFIG_MACH_XIAOMI_E7
+	int irq;
+#endif
 	int irq_gpio;
 	int irq_on_state;
 	int power_gpio;
 	int power_on_state;
 	int reset_gpio;
 	int reset_on_state;
+#ifdef CONFIG_MACH_XIAOMI_E7
+	int display_reset_gpio;
+#endif
 	int max_y_for_2d;
 	unsigned long irq_flags;
 	unsigned short i2c_addr;
