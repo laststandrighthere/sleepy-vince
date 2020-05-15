@@ -790,7 +790,7 @@ static int fw_parse_data(struct tas2557_priv *pTAS2557, struct TFirmware *pFirmw
 
 	if (pImageData->mpBlocks == NULL) {
 		dev_dbg(pTAS2557->dev, "failed malloc blocks mem\n");
-		goto end;
+		return -ENOMEM;
 	}
 
 	for (nBlock = 0; nBlock < pImageData->mnBlocks; nBlock++) {
