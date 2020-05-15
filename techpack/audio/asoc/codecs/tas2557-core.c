@@ -264,6 +264,8 @@ int tas2557_load_platdata(struct tas2557_priv *pTAS2557)
 	}
 
 	nResult = tas2557_set_bit_rate(pTAS2557, pTAS2557->mnI2SBits);
+	if (nResult < 0)
+		goto end;
 
 end:
 
@@ -284,6 +286,9 @@ int tas2557_load_default(struct tas2557_priv *pTAS2557)
 
 	/* enable DOUT tri-state for extra BCLKs */
 	nResult = pTAS2557->update_bits(pTAS2557, TAS2557_ASI1_DAC_FORMAT_REG, 0x01, 0x01);
+	if (nResult < 0)
+		goto end;
+
 end:
 
 	return nResult;
@@ -706,6 +711,9 @@ static int fw_parse_header(struct tas2557_priv *pTAS2557,
 
 	n = strlen(pData);
 	pFirmware->mpDescription = kmemdup(pData, n + 1, GFP_KERNEL);
+	if (!pFirmware->mpDescription)
+		return -ENOMEM;
+
 	pData += n + 1;
 	if ((pData - pDataStart) >= nSize) {
 		dev_err(pTAS2557->dev, "Firmware: Header too short after DDC description");
@@ -764,6 +772,9 @@ static int fw_parse_block_data(struct tas2557_priv *pTAS2557, struct TFirmware *
 
 	n = pBlock->mnCommands * 4;
 	pBlock->mpData = kmemdup(pData, n, GFP_KERNEL);
+	if (!pBlock->mpData)
+		return -ENOMEM;
+
 	pData += n;
 	return pData - pDataStart;
 }
@@ -780,6 +791,9 @@ static int fw_parse_data(struct tas2557_priv *pTAS2557, struct TFirmware *pFirmw
 
 	n = strlen(pData);
 	pImageData->mpDescription = kmemdup(pData, n + 1, GFP_KERNEL);
+	if (!pImageData->mpDescription)
+		return -ENOMEM;
+
 	pData += n + 1;
 
 	pImageData->mnBlocks = (pData[0] << 8) + pData[1];
@@ -796,6 +810,9 @@ static int fw_parse_data(struct tas2557_priv *pTAS2557, struct TFirmware *pFirmw
 	for (nBlock = 0; nBlock < pImageData->mnBlocks; nBlock++) {
 		n = fw_parse_block_data(pTAS2557, pFirmware,
 			&(pImageData->mpBlocks[nBlock]), pData);
+		if (n < 0)
+			return n;
+
 		pData += n;
 	}
 	return pData - pDataStart;
@@ -816,6 +833,9 @@ static int fw_parse_pll_data(struct tas2557_priv *pTAS2557,
 		goto end;
 
 	pFirmware->mpPLLs = kmalloc_array(pFirmware->mnPLLs, sizeof(struct TPLL), GFP_KERNEL);
+	if (!pFirmware->mpPLLs)
+		return -ENOMEM;
+
 	for (nPLL = 0; nPLL < pFirmware->mnPLLs; nPLL++) {
 		pPLL = &(pFirmware->mpPLLs[nPLL]);
 
@@ -824,9 +844,15 @@ static int fw_parse_pll_data(struct tas2557_priv *pTAS2557,
 
 		n = strlen(pData);
 		pPLL->mpDescription = kmemdup(pData, n + 1, GFP_KERNEL);
+		if (!pPLL->mpDescription)
+			return -ENOMEM;
+
 		pData += n + 1;
 
 		n = fw_parse_block_data(pTAS2557, pFirmware, &(pPLL->mBlock), pData);
+		if (n < 0)
+			return n;
+
 		pData += n;
 	}
 
@@ -852,7 +878,7 @@ static int fw_parse_program_data(struct tas2557_priv *pTAS2557,
 		kmalloc(sizeof(struct TProgram) * pFirmware->mnPrograms, GFP_KERNEL);
 	if (pFirmware->mpPrograms == NULL) {
 		dev_dbg(pTAS2557->dev, "failed malloc program mem\n");
-		goto end;
+		return -ENOMEM;
 	}
 
 	for (nProgram = 0; nProgram < pFirmware->mnPrograms; nProgram++) {
@@ -862,6 +888,9 @@ static int fw_parse_program_data(struct tas2557_priv *pTAS2557,
 
 		n = strlen(pData);
 		pProgram->mpDescription = kmemdup(pData, n + 1, GFP_KERNEL);
+		if (!pProgram->mpDescription)
+			return -ENOMEM;
+
 		pData += n + 1;
 
 		pProgram->mnAppMode = pData[0];
@@ -871,6 +900,9 @@ static int fw_parse_program_data(struct tas2557_priv *pTAS2557,
 		pData += 2;
 
 		n = fw_parse_data(pTAS2557, pFirmware, &(pProgram->mData), pData);
+		if (n < 0)
+			return n;
+
 		pData += n;
 	}
 
@@ -898,7 +930,7 @@ static int fw_parse_configuration_data(struct tas2557_priv *pTAS2557,
 		GFP_KERNEL);
 	if (pFirmware->mpConfigurations == NULL) {
 		dev_dbg(pTAS2557->dev, "failed malloc configuration mem\n");
-		goto end;
+		return -ENOMEM;
 	}
 
 	for (nConfiguration = 0; nConfiguration < pFirmware->mnConfigurations;
@@ -909,6 +941,9 @@ static int fw_parse_configuration_data(struct tas2557_priv *pTAS2557,
 
 		n = strlen(pData);
 		pConfiguration->mpDescription = kmemdup(pData, n + 1, GFP_KERNEL);
+		if (!pConfiguration->mpDescription)
+			return -ENOMEM;
+
 		pData += n + 1;
 
 		if ((pFirmware->mnDriverVersion >= PPC_DRIVER_CONFDEV)
@@ -937,6 +972,9 @@ static int fw_parse_configuration_data(struct tas2557_priv *pTAS2557,
 		}
 
 		n = fw_parse_data(pTAS2557, pFirmware, &(pConfiguration->mData), pData);
+		if (n < 0)
+			return n;
+
 		pData += n;
 	}
 
@@ -963,7 +1001,7 @@ int fw_parse_calibration_data(struct tas2557_priv *pTAS2557,
 		kmalloc(sizeof(struct TCalibration) * pFirmware->mnCalibrations, GFP_KERNEL);
 	if (pFirmware->mpCalibrations == NULL) {
 		dev_err(pTAS2557->dev, "failed to malloc calibration mem\n");
-		goto end;
+		return -ENOMEM;
 	}
 
 	for (nCalibration = 0;
@@ -975,6 +1013,9 @@ int fw_parse_calibration_data(struct tas2557_priv *pTAS2557,
 
 		n = strlen(pData);
 		pCalibration->mpDescription = kmemdup(pData, n + 1, GFP_KERNEL);
+		if (!pCalibration->mpDescription)
+			return -ENOMEM;
+
 		pData += n + 1;
 
 		pCalibration->mnProgram = pData[0];
@@ -984,6 +1025,9 @@ int fw_parse_calibration_data(struct tas2557_priv *pTAS2557,
 		pData++;
 
 		n = fw_parse_data(pTAS2557, pFirmware, &(pCalibration->mData), pData);
+		if (n < 0)
+			return n;
+
 		pData += n;
 	}
 
@@ -1013,18 +1057,24 @@ static int fw_parse(struct tas2557_priv *pTAS2557,
 	nPosition = 0;
 
 	nPosition = fw_parse_pll_data(pTAS2557, pFirmware, pData);
+	if (nPosition < 0)
+		return nPosition;
 
 	pData += nPosition;
 	nSize -= nPosition;
 	nPosition = 0;
 
 	nPosition = fw_parse_program_data(pTAS2557, pFirmware, pData);
+	if (nPosition < 0)
+		return nPosition;
 
 	pData += nPosition;
 	nSize -= nPosition;
 	nPosition = 0;
 
 	nPosition = fw_parse_configuration_data(pTAS2557, pFirmware, pData);
+	if (nPosition < 0)
+		return nPosition;
 
 	pData += nPosition;
 	nSize -= nPosition;
