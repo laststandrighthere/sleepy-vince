@@ -1708,7 +1708,7 @@ void nvt_mp_parse_dt(struct device_node *root, const char *node_compatible)
 
 static int nvt_ito_test_result_show(struct seq_file *file, void*data)
 {
-	char temp[5] = {0};
+	char temp[6] = {0};
 
 	if (1 == nvt_ito_test_result) {
 		strcpy(temp, "pass\n");
