@@ -22,7 +22,6 @@
 
 #ifdef CONFIG_TAS2557_CODEC
 
-#define DEBUG
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -164,7 +163,7 @@ static int tas2557_mute(struct snd_soc_dai *dai, int mute)
 	mutex_lock(&pTAS2557->codec_lock);
 
 	dev_dbg(pTAS2557->dev, "%s\n", __func__);
-	printk("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	tas2557_enable(pTAS2557, !mute);
 
 	mutex_unlock(&pTAS2557->codec_lock);
@@ -178,7 +177,7 @@ static int tas2557_set_dai_sysclk(struct snd_soc_dai *pDAI,
 	struct tas2557_priv *pTAS2557 = snd_soc_codec_get_drvdata(pCodec);
 
 	dev_dbg(pTAS2557->dev, "tas2557_set_dai_sysclk: freq = %u\n", nFreqency);
-	printk("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 
 	return 0;
 }
@@ -192,9 +191,9 @@ static int tas2557_hw_params(struct snd_pcm_substream *pSubstream,
 	mutex_lock(&pTAS2557->codec_lock);
 
 	dev_dbg(pTAS2557->dev, "%s\n", __func__);
-	printk("%s\n", __func__);
-/* do bit rate setting during platform data */
-/* tas2557_set_bit_rate(pTAS2557, channel_both, snd_pcm_format_width(params_format(pParams))); */
+	pr_debug("%s\n", __func__);
+	/* do bit rate setting during platform data */
+	/* tas2557_set_bit_rate(pTAS2557, channel_both, snd_pcm_format_width(params_format(pParams))); */
 	tas2557_set_sampling_rate(pTAS2557, params_rate(pParams));
 
 	mutex_unlock(&pTAS2557->codec_lock);
@@ -207,7 +206,8 @@ static int tas2557_set_dai_fmt(struct snd_soc_dai *pDAI, unsigned int nFormat)
 	struct tas2557_priv *pTAS2557 = snd_soc_codec_get_drvdata(codec);
 
 	dev_dbg(pTAS2557->dev, "%s\n", __func__);
-	printk("%s\n", __func__);
+	pr_debug("%s\n", __func__);
+
 	return 0;
 }
 
@@ -218,7 +218,8 @@ static int tas2557_prepare(struct snd_pcm_substream *pSubstream,
 	struct tas2557_priv *pTAS2557 = snd_soc_codec_get_drvdata(codec);
 
 	dev_dbg(pTAS2557->dev, "%s\n", __func__);
-	printk("%s\n", __func__);
+	pr_debug("%s\n", __func__);
+
 	return 0;
 }
 
@@ -226,9 +227,10 @@ static int tas2557_set_bias_level(struct snd_soc_codec *pCodec,
 	enum snd_soc_bias_level eLevel)
 {
 	struct tas2557_priv *pTAS2557 = snd_soc_codec_get_drvdata(pCodec);
-	printk("%s\n", __func__);
 
 	dev_dbg(pTAS2557->dev, "%s: %d\n", __func__, eLevel);
+	pr_debug("%s\n", __func__);
+
 	return 0;
 }
 
@@ -237,7 +239,8 @@ static int tas2557_codec_probe(struct snd_soc_codec *pCodec)
 	struct tas2557_priv *pTAS2557 = snd_soc_codec_get_drvdata(pCodec);
 
 	dev_dbg(pTAS2557->dev, "%s\n", __func__);
-	printk("%s\n", __func__);
+	pr_debug("%s\n", __func__);
+
 	return 0;
 }
 
