@@ -4091,6 +4091,8 @@ int set_tddi_lockdown_data_lansi (unsigned char *lockdown_data, unsigned short l
 	if (retval < 0)
 		goto exit;
 
+	blk_cnt = fwu->blkcount.tddi_lockdown_data;
+
 	fwu->config_size = fwu->blkcount.tddi_lockdown_data * fwu->block_size;
 	retval = fwu_allocate_read_config_buf (fwu->config_size);
 	if (retval < 0)
