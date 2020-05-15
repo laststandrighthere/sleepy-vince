@@ -22,7 +22,6 @@
 
 #ifdef CONFIG_TAS2557_REGMAP
 
-#define DEBUG
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -752,10 +751,9 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 
 	set_state = pinctrl_lookup_state(devm_pinctrl_get(pTAS2557->dev),"smartpa_irq_active");
 	if (IS_ERR(set_state))
-                        printk(" \n cannot get smartpa pinctrl  state\n");
-                else
-                        pinctrl_select_state(devm_pinctrl_get(pTAS2557->dev), set_state);
-
+		pr_debug(" \n cannot get smartpa pinctrl  state\n");
+	else
+		pinctrl_select_state(devm_pinctrl_get(pTAS2557->dev), set_state);
 
 	pTAS2557->read = tas2557_dev_read;
 	pTAS2557->write = tas2557_dev_write;
