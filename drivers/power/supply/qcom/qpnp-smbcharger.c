@@ -1106,6 +1106,7 @@ static int get_prop_batt_resistance_id(struct smbchg_chip *chip)
 	return rbatt;
 }
 
+#ifndef CONFIG_MACH_XIAOMI_E7
 #define DEFAULT_BATT_FULL_CHG_CAPACITY	0
 static int get_prop_batt_full_charge(struct smbchg_chip *chip)
 {
@@ -1118,6 +1119,7 @@ static int get_prop_batt_full_charge(struct smbchg_chip *chip)
 	}
 	return bfc;
 }
+#endif
 
 #define DEFAULT_BATT_VOLTAGE_NOW	0
 static int get_prop_batt_voltage_now(struct smbchg_chip *chip)
