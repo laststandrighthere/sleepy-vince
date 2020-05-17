@@ -57,8 +57,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			reg = <0x0>;
 			enable-method = "psci";
-			capacity-dmips-mhz = <1024>;
-			dynamic-power-coefficient = <100>;
+			efficiency = <1024>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
 			#cooling-cells = <2>;
@@ -83,8 +82,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x1>;
-			capacity-dmips-mhz = <1024>;
-			dynamic-power-coefficient = <100>;
+			efficiency = <1024>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
 			#cooling-cells = <2>;
@@ -103,8 +101,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x2>;
-			capacity-dmips-mhz = <1024>;
-			dynamic-power-coefficient = <100>;
+			efficiency = <1024>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
 			#cooling-cells = <2>;
@@ -123,8 +120,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x3>;
-			capacity-dmips-mhz = <1024>;
-			dynamic-power-coefficient = <100>;
+			efficiency = <1024>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
 			#cooling-cells = <2>;
@@ -143,8 +139,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x100>;
-			capacity-dmips-mhz = <1126>;
-			dynamic-power-coefficient = <110>;
+			efficiency = <1126>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
 			#cooling-cells = <2>;
@@ -169,8 +164,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x101>;
-			capacity-dmips-mhz = <1126>;
-			dynamic-power-coefficient = <110>;
+			efficiency = <1126>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
 			#cooling-cells = <2>;
@@ -189,8 +183,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x102>;
-			capacity-dmips-mhz = <1126>;
-			dynamic-power-coefficient = <110>;
+			efficiency = <1126>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
 			#cooling-cells = <2>;
@@ -209,8 +202,7 @@
 			compatible = "arm,cortex-a53","arm,armv8";
 			enable-method = "psci";
 			reg = <0x103>;
-			capacity-dmips-mhz = <1126>;
-			dynamic-power-coefficient = <110>;
+			efficiency = <1126>;
 			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
 			#cooling-cells = <2>;
@@ -230,11 +222,21 @@
 
 		CPU_COST_0: core-cost0 {
 			busy-cost-data = <
-				 481  10
-				 784  22
-				 908  33
-				 997  43
-				1024  44
+				 652800   5
+				 883200   8
+				1036800  10
+				1248000  13
+				1401600  16
+				1536000  19
+				1689600  22
+				1804800  26
+				1843200  27
+				1958400  33
+				2016000  36
+				2150400  43
+				2208000  44
+				2304000  54
+				2400000  65
 			>;
 			idle-cost-data = <
 				4 3 2 1
@@ -242,11 +244,21 @@
 		};
 		CLUSTER_COST_0: cluster-cost0 {
 			busy-cost-data = <
-				 481   74
-				 784  100
-				 908  130
-				 997  150
-				1024  160
+				 652800   69
+				 883200   72
+				1036800   74
+				1248000   77
+				1401600   80
+				1536000   90
+				1689600  100
+				1804800  110
+				1843200  120
+				1958400  130
+				2016000  140
+				2150400  150
+				2208000  160
+				2304000  170
+				2400000  180
 			>;
 			idle-cost-data = <
 				4 3 2 1
@@ -254,11 +266,21 @@
 		};
 		CLUSTER_COST_1: cluster-cost1 {
 			busy-cost-data = <
-				 481   10
-				 784   95
-				 908  125
-				 997  145
-				1024  155
+				 652800    5
+				 883200    8
+				1036800   10
+				1248000   13
+				1401600   16
+				1536000   85
+				1689600   95
+				1804800  105
+				1843200  115
+				1958400  125
+				2016000  135
+				2150400  145
+				2208000  155
+				2304000  165
+				2400000  175
 			>;
 			idle-cost-data = <
 				4 3 2 1
