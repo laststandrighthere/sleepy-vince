@@ -1352,7 +1352,7 @@ exit:
 	return idx;
 }
 
-static void lpm_cpuidle_freeze(struct cpuidle_device *dev,
+static void lpm_cpuidle_s2idle(struct cpuidle_device *dev,
 		struct cpuidle_driver *drv, int idx)
 {
 	struct lpm_cpu *cpu = per_cpu(cpu_lpm, dev->cpu);
@@ -1464,7 +1464,7 @@ static int cluster_cpuidle_register(struct lpm_cluster *cl)
 			st->target_residency = 0;
 			st->enter = lpm_cpuidle_enter;
 			if (i == lpm_cpu->nlevels - 1)
-				st->enter_freeze = lpm_cpuidle_freeze;
+				st->enter_s2idle = lpm_cpuidle_s2idle;
 		}
 
 		lpm_cpu->drv->state_count = lpm_cpu->nlevels;
@@ -1614,7 +1614,7 @@ static const struct platform_suspend_ops lpm_suspend_ops = {
 	.wake = lpm_suspend_wake,
 };
 
-static const struct platform_freeze_ops lpm_freeze_ops = {
+static const struct platform_s2idle_ops lpm_s2idle_ops = {
 	.prepare = lpm_suspend_prepare,
 	.restore = lpm_suspend_wake,
 };
@@ -1645,7 +1645,7 @@ static int lpm_probe(struct platform_device *pdev)
 	 * how late lpm_levels gets initialized.
 	 */
 	suspend_set_ops(&lpm_suspend_ops);
-	freeze_set_ops(&lpm_freeze_ops);
+	s2idle_set_ops(&lpm_s2idle_ops);
 	hrtimer_init(&lpm_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	for_each_possible_cpu(cpu) {
 		cpu_histtimer = &per_cpu(histtimer, cpu);
