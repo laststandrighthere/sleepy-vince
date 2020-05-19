@@ -3006,9 +3006,9 @@ static int bond_event_changename(struct bonding *bond)
 {
 	bond_remove_proc_entry(bond);
 	bond_create_proc_entry(bond);
-
+#ifdef CONFIG_DEBUGFS
 	bond_debug_reregister(bond);
-
+#endif
 	return NOTIFY_DONE;
 }
 
@@ -4295,8 +4295,9 @@ static void bond_uninit(struct net_device *bond_dev)
 	}
 
 	list_del(&bond->bond_list);
-
+#ifdef CONFIG_DEBUGFS
 	bond_debug_unregister(bond);
+#endif
 }
 
 /*------------------------- Module initialization ---------------------------*/
@@ -4691,9 +4692,9 @@ static int bond_init(struct net_device *bond_dev)
 	list_add_tail(&bond->bond_list, &bn->dev_list);
 
 	bond_prepare_sysfs_group(bond);
-
+#ifdef CONFIG_DEBUGFS
 	bond_debug_register(bond);
-
+#endif
 	/* Ensure valid dev_addr */
 	if (is_zero_ether_addr(bond_dev->dev_addr) &&
 	    bond_dev->addr_assign_type == NET_ADDR_PERM)
@@ -4807,9 +4808,9 @@ static int __init bonding_init(void)
 	res = bond_netlink_init();
 	if (res)
 		goto err_link;
-
+#ifdef CONFIG_DEBUGFS
 	bond_create_debugfs();
-
+#endif
 	for (i = 0; i < max_bonds; i++) {
 		res = bond_create(&init_net, NULL);
 		if (res)
@@ -4820,7 +4821,9 @@ static int __init bonding_init(void)
 out:
 	return res;
 err:
+#ifdef CONFIG_DEBUGFS
 	bond_destroy_debugfs();
+#endif
 	bond_netlink_fini();
 err_link:
 	unregister_pernet_subsys(&bond_net_ops);
@@ -4831,9 +4834,9 @@ err_link:
 static void __exit bonding_exit(void)
 {
 	unregister_netdevice_notifier(&bond_netdev_notifier);
-
+#ifdef CONFIG_DEBUGFS
 	bond_destroy_debugfs();
-
+#endif
 	bond_netlink_fini();
 	unregister_pernet_subsys(&bond_net_ops);
 
