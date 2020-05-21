@@ -9,3 +9,4 @@
 #include "vince-qrd-sku3.dtsi"
 #include "vince-qrd.dtsi"
 #include "vince-camera.dtsi"
+#include "vince-thermal.dtsi"
