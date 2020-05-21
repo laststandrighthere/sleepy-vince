@@ -13,4 +13,8 @@
 			};
 		};
 	};
+
+	xo-therm-adc {
+		polling-delay = <1000>;
+	};
 };
