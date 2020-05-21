@@ -9,3 +9,5 @@
 #include "vince-qrd.dtsi"
 #include "vince-camera.dtsi"
 #include "vince-thermal.dtsi"
+#include "vince-cpu.dtsi"
+#include "vince-regulator.dtsi"
