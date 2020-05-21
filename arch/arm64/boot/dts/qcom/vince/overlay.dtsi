@@ -11,3 +11,4 @@
 #include "vince-camera.dtsi"
 #include "vince-thermal.dtsi"
 #include "vince-gpu.dtsi"
+#include "vince-cpu.dtsi"
