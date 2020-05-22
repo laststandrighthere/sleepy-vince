@@ -17,20 +17,20 @@
 			/delete-node/ vbmeta;
 			fstab {
 				system {
-				compatible = "android,system";
-				dev = "/dev/block/platform/soc/7824900.sdhci/by-name/system";
-				type = "ext4";
-					mnt_flags = "ro,barrier=1,discard";
-					fsmgr_flags = "wait,verify";
-					status = "ok";
-                                };
+					compatible = "android,system";
+					dev = "/dev/block/platform/soc/7824900.sdhci/by-name/system";
+					type = "ext4";
+						mnt_flags = "ro,barrier=1,discard";
+						fsmgr_flags = "wait,verify";
+						status = "ok";
+				};
 				vendor {
 					dev = "/dev/block/platform/soc/7824900.sdhci/by-name/cust";
 					fsmgr_flags = "wait,verify";
-                                };
-                        };
-                };
-        };
+				};
+			};
+		};
+	};
 
 	reserved-memory {
 		other_ext_mem: other_ext_region@0 {
@@ -51,13 +51,14 @@
 			reg = <0x0 0x9ff00000 0x0 0x00100000>;
 		};
 	};
+
 	aliases {
 		spi6 = &spi_6;
 	};
 };
 
 &soc {
-        spi_6: spi@7af6000 { /* BLSP2 QUP2 */
+	spi_6: spi@7af6000 { /* BLSP2 QUP2 */
 		compatible = "qcom,spi-qup-v2";
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -95,10 +96,13 @@
 		reg = <0xa4128 0x4>;
 		reg-names = "sn-base";
 	};
+
 	qcom,wcnss-wlan@0a000000 {
 		qcom,iris-vddrfa-voltage-level = <1380000 0 1380000>;
 	};
+
 	/delete-node/ qseecom@85b00000;
+
 	qcom_seecom: qseecom@84A00000 {
 		compatible = "qcom,qseecom";
 		reg = <0x84A00000 0x1900000>;
@@ -125,24 +129,27 @@
 				"iface_clk", "bus_clk";
 		qcom,ce-opp-freq = <100000000>;
 	};
+
 	sdhc_1: sdhci@7824900 {
 		reg = <0x7824900 0x500>, <0x7824000 0x800>, <0x7824e00 0x200>;
 		reg-names = "hc_mem", "core_mem", "cmdq_mem";
 	};
+
 	usb3: ssusb@7000000{
 		qcom,detect-dpdm-floating;
 	};
+
 	qusb_phy: qusb@79000 {
 		qcom,qusb-phy-init-seq = <0xF8 0x80
-					0x53 0x84
-					0x93 0x88
-					0xCf 0x8C
-					0x14 0x9C
-					0x30 0x08
-					0x79 0x0C
-					0x21 0x10
-					0x00 0x90
-					0x9F 0x1C
-					0x00 0x18>;
+				0x53 0x84
+				0x93 0x88
+				0xCf 0x8C
+				0x14 0x9C
+				0x30 0x08
+				0x79 0x0C
+				0x21 0x10
+				0x00 0x90
+				0x9F 0x1C
+				0x00 0x18>;
 	};
 };
