@@ -20,8 +20,8 @@
 		interrupt-parent = <&tlmm>;
 		interrupts = <9 0x0>;
 
-		goodix,gpio_reset    = <&tlmm 140 0>;
-		goodix,gpio_irq      = <&tlmm 48 0>;
+		goodix,gpio_reset = <&tlmm 140 0>;
+		goodix,gpio_irq = <&tlmm 48 0>;
 
 		clock-names = "iface_clk", "core_clk";
 		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
@@ -44,8 +44,8 @@
 		input-device-name = "fpc1020";
 		interrupt-parent = <&tlmm>;
 		interrupts = <9 0x0>;
-		fpc,gpio_rst    = <&tlmm 140 0>;
-		fpc,gpio_irq    = <&tlmm 48 0>;
+		fpc,gpio_rst = <&tlmm 140 0>;
+		fpc,gpio_irq = <&tlmm 48 0>;
 
 		clock-names = "iface_clk", "core_clk";
 		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
@@ -66,7 +66,7 @@
 	i2c@78b7000 { /* BLSP1 QUP3 */
 		status = "okay";
 		/delete-node/ synaptics@4b;
-        	vituralsar@33{
+		vituralsar@33{
 			compatible = "virtualsar,sar";
 			reg = <0x33>;
 			interrupt-parent = <&tlmm>;
@@ -442,12 +442,14 @@
 	/delete-property/ qcom,typec-psy-name;
 	qcom,thermal-mitigation = <3000 2500 2500 2500 1000 1000 0>;
 };
+
 &pmi8950_fg {
 	qcom,thermal-coefficients = [c8 86 c1 50 d3 37];
 	qcom,cold-bat-decidegc = <0>;
 	qcom,cool-bat-decidegc = <150>;
 	qcom,warm-bat-decidegc = <450>;
 };
+
 &sdhc_2 {
 	cd-gpios = <&tlmm 133 0x0>;
 };
@@ -472,6 +474,7 @@
 		qcom,current = <120>;
 	};
 };
+
 &led_flash0{
 	 qcom,flash-source = <&pmi8950_flash0 &pmi8950_flash1>;
 	 qcom,torch-source = <&pmi8950_torch0 &pmi8950_torch1>;
