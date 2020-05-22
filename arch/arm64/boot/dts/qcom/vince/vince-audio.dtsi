@@ -14,7 +14,6 @@
 &soc {
 	int_codec: sound {
 		status = "ok";
-		qcom,msm-hs-micbias-type = "internal";
 		qcom,audio-routing =
 			"RX_BIAS", "MCLK",
 			"SPK_RX_BIAS", "MCLK",
