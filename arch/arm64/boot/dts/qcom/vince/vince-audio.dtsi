@@ -13,7 +13,6 @@
 
 &soc {
 	int_codec: sound {
-		status = "ok";
 		qcom,audio-routing =
 			"RX_BIAS", "MCLK",
 			"SPK_RX_BIAS", "MCLK",
@@ -26,15 +25,14 @@
 			"AMIC3", "MIC BIAS External";
 	};
 	i2c@78b6000 {
-		status = "okay";
 		tas2557@4c {
-                        compatible = "ti,tas2557";
-                        reg = <0x4c>;
-                        ti,cdc-reset-gpio = <&tlmm 86 0>;
-                        ti,irq-gpio = <&tlmm 87 0x0>;
-                        ti,i2s-bits = <16>;   /* support 16, 24, 32 */
-                        ti,bypass-tmax = <0>;   /* 0, not bypass; 1, bypass */
-                        status = "ok";
+			compatible = "ti,tas2557";
+			reg = <0x4c>;
+			ti,cdc-reset-gpio = <&tlmm 86 0>;
+			ti,irq-gpio = <&tlmm 87 0x0>;
+			ti,i2s-bits = <16>;   /* support 16, 24, 32 */
+			ti,bypass-tmax = <0>;   /* 0, not bypass; 1, bypass */
+			status = "ok";
 			pinctrl-names = "smartpa_irq_active";
 			pinctrl-0 = <&smartpa_irq_active>;
 		};
