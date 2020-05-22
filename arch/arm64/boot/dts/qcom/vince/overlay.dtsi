@@ -1,6 +1,5 @@
 #include "vince-general.dtsi"
 #include "vince-pinctrl.dtsi"
-#include "common-pm.dtsi"
 #include "vince-pm8953.dtsi"
 #include "common-regulator.dtsi"
 #include "vince-audio.dtsi"
