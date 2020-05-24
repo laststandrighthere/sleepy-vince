@@ -113,19 +113,6 @@ modpost_link()
 	${LD} ${LDFLAGS} -r -o ${1} $(modversions) ${objects}
 }
 
-# If CONFIG_LTO_CLANG is selected, we postpone running recordmcount until
-# we have compiled LLVM IR to an object file.
-recordmcount()
-{
-	if [ -z "${CONFIG_LTO_CLANG}" ]; then
-		return
-	fi
-
-	if [ -n "${CONFIG_FTRACE_MCOUNT_RECORD}" ]; then
-		scripts/recordmcount ${RECORDMCOUNT_FLAGS} $*
-	fi
-}
-
 # Link of vmlinux
 # ${1} - optional extra .o files
 # ${2} - output file
@@ -322,9 +309,6 @@ if [ -n "${CONFIG_LTO_CLANG}" ]; then
 	# vmlinux_link
 	KBUILD_VMLINUX_INIT=
 	KBUILD_VMLINUX_MAIN=vmlinux.o
-
-	# Call recordmcount if needed
-	recordmcount vmlinux.o
 fi
 
 # Generate RTIC MP placeholder compile unit of the correct size
