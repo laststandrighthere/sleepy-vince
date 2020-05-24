@@ -2101,8 +2101,6 @@ void __weak module_arch_freeing_init(struct module *mod)
 {
 }
 
-static void cfi_cleanup(struct module *mod);
-
 /* Free a module, remove from lists, etc. */
 static void free_module(struct module *mod)
 {
@@ -2144,10 +2142,6 @@ static void free_module(struct module *mod)
 
 	/* This may be empty, but that's OK */
 	disable_ro_nx(&mod->init_layout);
-
-	/* Clean up CFI for the module. */
-	cfi_cleanup(mod);
-
 	module_arch_freeing_init(mod);
 	module_memfree(mod->init_layout.base);
 	kfree(mod->args);
@@ -3334,8 +3328,6 @@ int __weak module_finalize(const Elf_Ehdr *hdr,
 	return 0;
 }
 
-static void cfi_init(struct module *mod);
-
 static int post_relocation(struct module *mod, const struct load_info *info)
 {
 	/* Sort exception table now relocations are done. */
@@ -3347,9 +3339,6 @@ static int post_relocation(struct module *mod, const struct load_info *info)
 
 	/* Setup kallsyms-specific fields. */
 	add_kallsyms(mod, info);
-
-	/* Setup CFI for the module. */
-	cfi_init(mod);
 
 	/* Arch-specific module finalizing. */
 	return module_finalize(info->hdr, info->sechdrs, mod);
@@ -4094,22 +4083,6 @@ int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
 	return 0;
 }
 #endif /* CONFIG_KALLSYMS */
-
-static void cfi_init(struct module *mod)
-{
-#ifdef CONFIG_CFI_CLANG
-	mod->cfi_check =
-		(cfi_check_fn)mod_find_symname(mod, CFI_CHECK_FN_NAME);
-	cfi_module_add(mod, module_addr_min, module_addr_max);
-#endif
-}
-
-static void cfi_cleanup(struct module *mod)
-{
-#ifdef CONFIG_CFI_CLANG
-	cfi_module_remove(mod, module_addr_min, module_addr_max);
-#endif
-}
 
 static char *module_flags(struct module *mod, char *buf)
 {
