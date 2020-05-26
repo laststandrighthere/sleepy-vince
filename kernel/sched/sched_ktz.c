@@ -1057,7 +1057,7 @@ static int tdq_idled(struct ktz_tdq *this_tdq)
 	this_cpu = smp_processor_id();
 
 	if(!cpu_active(this_cpu))
-		return;
+		return 0;
 
 	cpumask_setall(&cpus);
 	/* Don't steal from oursleves. */
