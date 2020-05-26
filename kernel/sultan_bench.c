@@ -10,8 +10,7 @@
 #include <linux/kthread.h>
 
 /**************************** CONFIGURATION BEGIN ****************************/
-static const int little_cpu_freqs[] = {
-#if 0
+static const int cpu_freqs[] = {
 	300000,
 	364800,
 	441600,
@@ -34,50 +33,13 @@ static const int little_cpu_freqs[] = {
 	1747200,
 	1824000,
 	1900800
-#endif
-};
-
-static const int big_cpu_freqs[] = {
-#if 0
-	300000,
-	345600,
-	422400,
-	499200,
-	576000,
-	652800,
-	729600,
-	806400,
-	902400,
-	979200,
-	1056000,
-	1132800,
-	1190400,
-	1267200,
-	1344000,
-	1420800,
-	1497600,
-	1574400,
-	1651200,
-	1728000,
-	1804800,
-	1881600,
-	1958400,
-	2035200,
-	2112000,
-	2208000,
-	2265600,
-	2323200,
-	2342400,
-	2361600,
-	2457600
-#endif
 };
 
 /* Uncomment to disable power readings */
 #define MEASURE_POWER
 
 /* WARNING: Don't bench both clusters at the same time */
-const unsigned long cpu_bench_mask = 0b11110000;
+const unsigned long cpu_bench_mask = 0b11111111;
 /***************************** CONFIGURATION END *****************************/
 
 /* Delay before starting to ensure nothing left from init will interfere */
@@ -88,7 +50,7 @@ struct work_data {
 	int nr_freqs;
 };
 
-static int max_cpu_freq[NR_CPUS];
+static int max_cpu_freq;
 static volatile int active_count;
 static volatile int sub_active_count;
 static DECLARE_COMPLETION(bench_round_comp);
@@ -116,13 +78,10 @@ static int cpu_notifier_cb(struct notifier_block *nb,
 	if (action != CPUFREQ_ADJUST)
 		return NOTIFY_OK;
 
-	if (add_with_lock(&active_count, 0)) {
-		freq = max_cpu_freq[policy->cpu];
-		if (!freq)
-			freq = policy->cpuinfo.min_freq;
-	} else {
+	if (add_with_lock(&active_count, 0))
+		freq = READ_ONCE(max_cpu_freq);
+	else
 		freq = policy->cpuinfo.max_freq;
-	}
 
 	policy->min = freq;
 	policy->max = freq;
@@ -137,14 +96,8 @@ static struct notifier_block cpu_notif = {
 
 static void __set_cpu_freq(int cpu, int freq)
 {
-	if (cpumask_test_cpu(cpu, cpu_lp_mask))
-		cpu = cpumask_first(cpu_lp_mask);
-	else
-		cpu = cpumask_first(cpu_perf_mask);
-
-	max_cpu_freq[cpu] = freq;
-	cpufreq_update_policy(cpumask_first(cpu_lp_mask));
-	cpufreq_update_policy(cpumask_first(cpu_perf_mask));
+	WRITE_ONCE(max_cpu_freq, freq);	
+	cpufreq_update_policy(cpu);
 	msleep(100);
 }
 
@@ -292,13 +245,8 @@ static int master_thread(void *data)
 		if (cpu == smp_processor_id())
 			continue;
 
-		if (cpumask_test_cpu(cpu, cpu_lp_mask)) {
-			w->nr_freqs = ARRAY_SIZE(little_cpu_freqs);
-			w->freq_tbl = little_cpu_freqs;
-		} else {
-			w->nr_freqs = ARRAY_SIZE(big_cpu_freqs);
-			w->freq_tbl = big_cpu_freqs;
-		}
+		w->nr_freqs = ARRAY_SIZE(cpu_freqs);	
+		w->freq_tbl = cpu_freqs;
 
 		thread = kthread_create(cpu_bench_thread, w, "bench_thread");
 		BUG_ON(IS_ERR(thread));
