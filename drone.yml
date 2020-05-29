@@ -19,8 +19,7 @@ steps:
       STICKER:
         from_secret: STICKER
     commands:
-      - git clone https://github.com/laststandrighthere/scripts.git ci
-      - ./ci/kernel.sh sleepy gcc 9.3 vince aosp drone
+      - curl -s https://raw.githubusercontent.com/laststandrighthere/scripts/master/kernel.sh | bash -s sleepy gcc 9.3 vince aosp drone vince
     when:
       branch:
         - 4.9-wip-lto-revert
