@@ -54,8 +54,8 @@
 #include <linux/writeback.h>
 #include <linux/shm.h>
 #include <linux/kcov.h>
-
-#include "sched/tune.h"
+#include <linux/random.h>
+#include <linux/rcuwait.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -87,17 +87,16 @@ static void __exit_signal(struct task_struct *tsk)
 	bool group_dead = thread_group_leader(tsk);
 	struct sighand_struct *sighand;
 	struct tty_struct *uninitialized_var(tty);
-	cputime_t utime, stime;
+	u64 utime, stime;
 
 	sighand = rcu_dereference_check(tsk->sighand,
 					lockdep_tasklist_lock_is_held());
 	spin_lock(&sighand->siglock);
 
+#ifdef CONFIG_POSIX_TIMERS
 	posix_cpu_timers_exit(tsk);
 	if (group_dead) {
 		posix_cpu_timers_exit_group(tsk);
-		tty = sig->tty;
-		sig->tty = NULL;
 	} else {
 		/*
 		 * This can only happen if the caller is de_thread().
@@ -106,7 +105,13 @@ static void __exit_signal(struct task_struct *tsk)
 		 */
 		if (unlikely(has_group_leader_pid(tsk)))
 			posix_cpu_timers_exit_group(tsk);
+	}
+#endif
 
+	if (group_dead) {
+		tty = sig->tty;
+		sig->tty = NULL;
+	} else {
 		/*
 		 * If there is any task waiting for the group exit
 		 * then notify it:
@@ -117,6 +122,9 @@ static void __exit_signal(struct task_struct *tsk)
 		if (tsk == sig->curr_target)
 			sig->curr_target = next_thread(tsk);
 	}
+
+	add_device_randomness((const void*) &tsk->se.sum_exec_runtime,
+			      sizeof(unsigned long long));
 
 	/*
 	 * Accumulate here the counters for all threads as they die. We could
@@ -275,17 +283,33 @@ retry:
 	return task;
 }
 
-struct task_struct *try_get_task_struct(struct task_struct **ptask)
+void rcuwait_wake_up(struct rcuwait *w)
 {
 	struct task_struct *task;
 
 	rcu_read_lock();
-	task = task_rcu_dereference(ptask);
-	if (task)
-		get_task_struct(task);
-	rcu_read_unlock();
 
-	return task;
+	/*
+	 * Order condition vs @task, such that everything prior to the load
+	 * of @task is visible. This is the condition as to why the user called
+	 * rcuwait_trywake() in the first place. Pairs with set_current_state()
+	 * barrier (A) in rcuwait_wait_event().
+	 *
+	 *    WAIT                WAKE
+	 *    [S] tsk = current	  [S] cond = true
+	 *        MB (A)	      MB (B)
+	 *    [L] cond		  [L] tsk
+	 */
+	smp_rmb(); /* (B) */
+
+	/*
+	 * Avoid using task_rcu_dereference() magic as long as we are careful,
+	 * see comment in rcuwait_wait_event() regarding ->exit_state.
+	 */
+	task = rcu_dereference(w->task);
+	if (task)
+		wake_up_process(task);
+	rcu_read_unlock();
 }
 
 /*
@@ -461,13 +485,13 @@ assign_new_owner:
  * Turn us into a lazy TLB process if we
  * aren't already..
  */
-static void exit_mm(struct task_struct *tsk)
+static void exit_mm(void)
 {
-	struct mm_struct *mm = tsk->mm;
+	struct mm_struct *mm = current->mm;
 	struct core_state *core_state;
 	int mm_released;
 
-	mm_release(tsk, mm);
+	mm_release(current, mm);
 	if (!mm)
 		return;
 	sync_mm_rss(mm);
@@ -485,7 +509,7 @@ static void exit_mm(struct task_struct *tsk)
 
 		up_read(&mm->mmap_sem);
 
-		self.task = tsk;
+		self.task = current;
 		self.next = xchg(&core_state->dumper.next, &self);
 		/*
 		 * Implies mb(), the result of xchg() must be visible
@@ -495,29 +519,29 @@ static void exit_mm(struct task_struct *tsk)
 			complete(&core_state->startup);
 
 		for (;;) {
-			set_task_state(tsk, TASK_UNINTERRUPTIBLE);
+			set_current_state(TASK_UNINTERRUPTIBLE);
 			if (!self.task) /* see coredump_finish() */
 				break;
 			freezable_schedule();
 		}
-		__set_task_state(tsk, TASK_RUNNING);
+		__set_current_state(TASK_RUNNING);
 		down_read(&mm->mmap_sem);
 	}
 	atomic_inc(&mm->mm_count);
-	BUG_ON(mm != tsk->active_mm);
+	BUG_ON(mm != current->active_mm);
 	/* more a memory barrier than a real lock */
-	task_lock(tsk);
-	tsk->mm = NULL;
+	task_lock(current);
+	current->mm = NULL;
 	up_read(&mm->mmap_sem);
 	enter_lazy_tlb(mm, current);
-	task_unlock(tsk);
+	task_unlock(current);
 	mm_update_next_owner(mm);
 
 	mm_released = mmput(mm);
 	if (test_thread_flag(TIF_MEMDIE))
 		exit_oom_victim();
 	if (mm_released)
-		set_tsk_thread_flag(tsk, TIF_MM_RELEASED);
+		set_tsk_thread_flag(current, TIF_MM_RELEASED);
 }
 
 static struct task_struct *find_alive_thread(struct task_struct *p)
@@ -749,7 +773,6 @@ void __noreturn do_exit(long code)
 {
 	struct task_struct *tsk = current;
 	int group_dead;
-	TASKS_RCU(int tasks_rcu_i);
 
 	profile_task_exit(tsk);
 	kcov_task_exit(tsk);
@@ -800,9 +823,6 @@ void __noreturn do_exit(long code)
 
 	exit_signals(tsk);  /* sets PF_EXITING */
 
-	sched_exit(tsk);
-	schedtune_exit_task(tsk);
-
 	/*
 	 * Ensure that all new tsk->pi_lock acquisitions must observe
 	 * PF_EXITING. Serializes against futex.c:attach_to_pi_owner().
@@ -812,7 +832,8 @@ void __noreturn do_exit(long code)
 	 * Ensure that we must observe the pi_state in exit_mm() ->
 	 * mm_release() -> exit_pi_state_list().
 	 */
-	raw_spin_unlock_wait(&tsk->pi_lock);
+	raw_spin_lock_irq(&tsk->pi_lock);
+	raw_spin_unlock_irq(&tsk->pi_lock);
 
 	if (unlikely(in_atomic())) {
 		pr_info("note: %s[%d] exited with preempt_count %d\n",
@@ -827,8 +848,10 @@ void __noreturn do_exit(long code)
 	acct_update_integrals(tsk);
 	group_dead = atomic_dec_and_test(&tsk->signal->live);
 	if (group_dead) {
+#ifdef CONFIG_POSIX_TIMERS
 		hrtimer_cancel(&tsk->signal->real_timer);
 		exit_itimers(tsk->signal);
+#endif
 		if (tsk->mm)
 			setmax_mm_hiwater_rss(&tsk->signal->maxrss, tsk->mm);
 	}
@@ -840,7 +863,7 @@ void __noreturn do_exit(long code)
 	tsk->exit_code = code;
 	taskstats_exit(tsk, group_dead);
 
-	exit_mm(tsk);
+	exit_mm();
 
 	if (group_dead)
 		acct_process();
@@ -872,9 +895,7 @@ void __noreturn do_exit(long code)
 	 */
 	flush_ptrace_hw_breakpoint(tsk);
 
-	TASKS_RCU(preempt_disable());
-	TASKS_RCU(tasks_rcu_i = __srcu_read_lock(&tasks_rcu_exit_srcu));
-	TASKS_RCU(preempt_enable());
+	exit_tasks_rcu_start();
 	exit_notify(tsk, group_dead);
 	proc_exit_connector(tsk);
 	mpol_put_task_policy(tsk);
@@ -909,8 +930,9 @@ void __noreturn do_exit(long code)
 	if (tsk->nr_dirtied)
 		__this_cpu_add(dirty_throttle_leaks, tsk->nr_dirtied);
 	exit_rcu();
-	TASKS_RCU(__srcu_read_unlock(&tasks_rcu_exit_srcu, tasks_rcu_i));
+	exit_tasks_rcu_finish();
 
+	lockdep_free_task(tsk);
 	do_task_dead();
 }
 EXPORT_SYMBOL_GPL(do_exit);
@@ -1108,7 +1130,7 @@ static int wait_task_zombie(struct wait_opts *wo, struct task_struct *p)
 		struct signal_struct *sig = p->signal;
 		struct signal_struct *psig = current->signal;
 		unsigned long maxrss;
-		cputime_t tgutime, tgstime;
+		u64 tgutime, tgstime;
 
 		/*
 		 * The resource counters for the group leader are in its

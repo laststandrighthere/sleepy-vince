@@ -57,13 +57,6 @@ static struct softirq_action softirq_vec[NR_SOFTIRQS] __cacheline_aligned_in_smp
 
 DEFINE_PER_CPU(struct task_struct *, ksoftirqd);
 
-/*
- * active_softirqs -- per cpu, a mask of softirqs that are being handled,
- * with the expectation that approximate answers are acceptable and therefore
- * no synchronization.
- */
-DEFINE_PER_CPU(__u32, active_softirqs);
-
 const char * const softirq_to_name[NR_SOFTIRQS] = {
 	"HI", "TIMER", "NET_TX", "NET_RX", "BLOCK", "IRQ_POLL",
 	"TASKLET", "SCHED", "HRTIMER", "RCU"
@@ -133,7 +126,7 @@ EXPORT_SYMBOL(__local_bh_disable_ip);
 
 static void __local_bh_enable(unsigned int cnt)
 {
-	WARN_ON_ONCE(!irqs_disabled());
+	lockdep_assert_irqs_disabled();
 
 	if (softirq_count() == (cnt & SOFTIRQ_MASK))
 		trace_softirqs_on(_RET_IP_);
@@ -154,7 +147,8 @@ EXPORT_SYMBOL(_local_bh_enable);
 
 void __local_bh_enable_ip(unsigned long ip, unsigned int cnt)
 {
-	WARN_ON_ONCE(in_irq() || irqs_disabled());
+	WARN_ON_ONCE(in_irq());
+	lockdep_assert_irqs_enabled();
 #ifdef CONFIG_TRACE_IRQFLAGS
 	local_irq_disable();
 #endif
@@ -234,16 +228,6 @@ static inline bool lockdep_softirq_start(void) { return false; }
 static inline void lockdep_softirq_end(bool in_hardirq) { }
 #endif
 
-#define softirq_deferred_for_rt(pending)		\
-({							\
-	__u32 deferred = 0;				\
-	if (cpupri_check_rt()) {			\
-		deferred = pending & LONG_SOFTIRQ_MASK; \
-		pending &= ~LONG_SOFTIRQ_MASK;		\
-	}						\
-	deferred;					\
-})
-
 asmlinkage __visible void __softirq_entry __do_softirq(void)
 {
 	unsigned long end = jiffies + MAX_SOFTIRQ_TIME;
@@ -251,7 +235,6 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 	int max_restart = MAX_SOFTIRQ_RESTART;
 	struct softirq_action *h;
 	bool in_hardirq;
-	__u32 deferred;
 	__u32 pending;
 	int softirq_bit;
 
@@ -263,15 +246,14 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 	current->flags &= ~PF_MEMALLOC;
 
 	pending = local_softirq_pending();
-	deferred = softirq_deferred_for_rt(pending);
 	account_irq_enter_time(current);
+
 	__local_bh_disable_ip(_RET_IP_, SOFTIRQ_OFFSET);
 	in_hardirq = lockdep_softirq_start();
 
 restart:
 	/* Reset the pending bitmask before enabling irqs */
-	set_softirq_pending(deferred);
-	__this_cpu_write(active_softirqs, pending);
+	set_softirq_pending(0);
 
 	local_irq_enable();
 
@@ -301,26 +283,23 @@ restart:
 		pending >>= softirq_bit;
 	}
 
-	__this_cpu_write(active_softirqs, 0);
 	rcu_bh_qs();
 	local_irq_disable();
 
 	pending = local_softirq_pending();
-	deferred = softirq_deferred_for_rt(pending);
-
 	if (pending) {
 		if (time_before(jiffies, end) && !need_resched() &&
 		    --max_restart)
 			goto restart;
+
+		wakeup_softirqd();
 	}
 
-	if (pending | deferred)
-		wakeup_softirqd();
 	lockdep_softirq_end(in_hardirq);
 	account_irq_exit_time(current);
 	__local_bh_enable(SOFTIRQ_OFFSET);
 	WARN_ON_ONCE(in_interrupt());
-	tsk_restore_flags(current, old_flags, PF_MEMALLOC);
+	current_restore_flags(old_flags, PF_MEMALLOC);
 }
 
 asmlinkage __visible void do_softirq(void)
@@ -390,7 +369,7 @@ static inline void tick_irq_exit(void)
 
 	/* Make sure that timer wheel updates are propagated */
 	if ((idle_cpu(cpu) && !need_resched()) || tick_nohz_full_cpu(cpu)) {
-		if (!in_interrupt())
+		if (!in_irq())
 			tick_nohz_irq_exit();
 	}
 #endif
@@ -404,9 +383,8 @@ void irq_exit(void)
 #ifndef __ARCH_IRQ_EXIT_IRQS_DISABLED
 	local_irq_disable();
 #else
-	WARN_ON_ONCE(!irqs_disabled());
+	lockdep_assert_irqs_disabled();
 #endif
-
 	account_irq_exit_time(current);
 	preempt_count_sub(HARDIRQ_OFFSET);
 	if (!in_interrupt() && local_softirq_pending())
@@ -496,7 +474,7 @@ EXPORT_SYMBOL(__tasklet_hi_schedule);
 
 void __tasklet_hi_schedule_first(struct tasklet_struct *t)
 {
-	BUG_ON(!irqs_disabled());
+	lockdep_assert_irqs_disabled();
 
 	t->next = __this_cpu_read(tasklet_hi_vec.head);
 	__this_cpu_write(tasklet_hi_vec.head, t);
@@ -683,7 +661,7 @@ static void run_ksoftirqd(unsigned int cpu)
 		 */
 		__do_softirq();
 		local_irq_enable();
-		cond_resched_rcu_qs();
+		cond_resched();
 		return;
 	}
 	local_irq_enable();

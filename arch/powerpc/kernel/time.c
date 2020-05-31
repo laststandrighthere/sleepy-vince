@@ -34,6 +34,7 @@
 #include <linux/errno.h>
 #include <linux/export.h>
 #include <linux/sched.h>
+#include <linux/sched/clock.h>
 #include <linux/kernel.h>
 #include <linux/param.h>
 #include <linux/string.h>
@@ -80,7 +81,7 @@
 #include <linux/clockchips.h>
 #include <linux/timekeeper_internal.h>
 
-static cycle_t rtc_read(struct clocksource *);
+static u64 rtc_read(struct clocksource *);
 static struct clocksource clocksource_rtc = {
 	.name         = "rtc",
 	.rating       = 400,
@@ -89,7 +90,7 @@ static struct clocksource clocksource_rtc = {
 	.read         = rtc_read,
 };
 
-static cycle_t timebase_read(struct clocksource *);
+static u64 timebase_read(struct clocksource *);
 static struct clocksource clocksource_timebase = {
 	.name         = "timebase",
 	.rating       = 400,
@@ -360,7 +361,8 @@ void vtime_account_system(struct task_struct *tsk)
 	unsigned long delta, sys_scaled, stolen;
 
 	delta = vtime_delta(tsk, &sys_scaled, &stolen);
-	account_system_time(tsk, 0, delta, sys_scaled);
+	account_system_time(tsk, 0, delta);
+	tsk->stimescaled += sys_scaled;
 	if (stolen)
 		account_steal_time(stolen);
 }
@@ -375,15 +377,13 @@ void vtime_account_idle(struct task_struct *tsk)
 }
 
 /*
- * Transfer the user time accumulated in the paca
- * by the exception entry and exit code to the generic
- * process user time records.
+ * Account the whole cputime accumulated in the paca
  * Must be called with interrupts disabled.
  * Assumes that vtime_account_system/idle() has been called
  * recently (i.e. since the last entry from usermode) so that
  * get_paca()->user_time_scaled is up to date.
  */
-void vtime_account_user(struct task_struct *tsk)
+void vtime_flush(struct task_struct *tsk)
 {
 	cputime_t utime, utimescaled;
 	struct cpu_accounting_data *acct = get_accounting(tsk);
@@ -393,7 +393,8 @@ void vtime_account_user(struct task_struct *tsk)
 	acct->user_time = 0;
 	acct->user_time_scaled = 0;
 	acct->utime_sspurr = 0;
-	account_user_time(tsk, utime, utimescaled);
+	account_user_time(tsk, utime);
+	tsk->utimescaled += utimescaled;
 }
 
 #ifdef CONFIG_PPC32
@@ -811,18 +812,18 @@ void read_persistent_clock(struct timespec *ts)
 }
 
 /* clocksource code */
-static cycle_t rtc_read(struct clocksource *cs)
+static u64 rtc_read(struct clocksource *cs)
 {
-	return (cycle_t)get_rtc();
+	return (u64)get_rtc();
 }
 
-static cycle_t timebase_read(struct clocksource *cs)
+static u64 timebase_read(struct clocksource *cs)
 {
-	return (cycle_t)get_tb();
+	return (u64)get_tb();
 }
 
 void update_vsyscall_old(struct timespec *wall_time, struct timespec *wtm,
-			 struct clocksource *clock, u32 mult, cycle_t cycle_last)
+			 struct clocksource *clock, u32 mult, u64 cycle_last)
 {
 	u64 new_tb_to_xs, new_stamp_xsec;
 	u32 frac_sec;

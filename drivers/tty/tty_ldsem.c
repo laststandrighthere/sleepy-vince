@@ -199,7 +199,6 @@ static struct ld_semaphore __sched *
 down_read_failed(struct ld_semaphore *sem, long count, long timeout)
 {
 	struct ldsem_waiter waiter;
-	struct task_struct *tsk = current;
 	long adjust = -LDSEM_ACTIVE_BIAS + LDSEM_WAIT_BIAS;
 
 	/* set up my own style of waitqueue */
@@ -220,8 +219,8 @@ down_read_failed(struct ld_semaphore *sem, long count, long timeout)
 	list_add_tail(&waiter.list, &sem->read_wait);
 	sem->wait_readers++;
 
-	waiter.task = tsk;
-	get_task_struct(tsk);
+	waiter.task = current;
+	get_task_struct(current);
 
 	/* if there are no active locks, wake the new lock owner(s) */
 	if ((count & LDSEM_ACTIVE_MASK) == 0)
@@ -231,7 +230,7 @@ down_read_failed(struct ld_semaphore *sem, long count, long timeout)
 
 	/* wait to be given the lock */
 	for (;;) {
-		set_task_state(tsk, TASK_UNINTERRUPTIBLE);
+		set_current_state(TASK_UNINTERRUPTIBLE);
 
 		if (!smp_load_acquire(&waiter.task))
 			break;
@@ -240,7 +239,7 @@ down_read_failed(struct ld_semaphore *sem, long count, long timeout)
 		timeout = schedule_timeout(timeout);
 	}
 
-	__set_task_state(tsk, TASK_RUNNING);
+	__set_current_state(TASK_RUNNING);
 
 	if (!timeout) {
 		/* lock timed out but check if this task was just
@@ -267,7 +266,6 @@ static struct ld_semaphore __sched *
 down_write_failed(struct ld_semaphore *sem, long count, long timeout)
 {
 	struct ldsem_waiter waiter;
-	struct task_struct *tsk = current;
 	long adjust = -LDSEM_ACTIVE_BIAS;
 	int locked = 0;
 
@@ -288,16 +286,16 @@ down_write_failed(struct ld_semaphore *sem, long count, long timeout)
 
 	list_add_tail(&waiter.list, &sem->write_wait);
 
-	waiter.task = tsk;
+	waiter.task = current;
 
-	set_task_state(tsk, TASK_UNINTERRUPTIBLE);
+	set_current_state(TASK_UNINTERRUPTIBLE);
 	for (;;) {
 		if (!timeout)
 			break;
 		raw_spin_unlock_irq(&sem->wait_lock);
 		timeout = schedule_timeout(timeout);
 		raw_spin_lock_irq(&sem->wait_lock);
-		set_task_state(tsk, TASK_UNINTERRUPTIBLE);
+		set_current_state(TASK_UNINTERRUPTIBLE);
 		locked = writer_trylock(sem);
 		if (locked)
 			break;
@@ -318,7 +316,7 @@ down_write_failed(struct ld_semaphore *sem, long count, long timeout)
 
 	raw_spin_unlock_irq(&sem->wait_lock);
 
-	__set_task_state(tsk, TASK_RUNNING);
+	__set_current_state(TASK_RUNNING);
 
 	/* lock wait may have timed out */
 	if (!locked)

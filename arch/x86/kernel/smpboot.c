@@ -45,6 +45,7 @@
 #include <linux/smp.h>
 #include <linux/export.h>
 #include <linux/sched.h>
+#include <linux/sched/topology.h>
 #include <linux/percpu.h>
 #include <linux/bootmem.h>
 #include <linux/err.h>
@@ -1443,7 +1444,7 @@ __init void prefill_possible_map(void)
 
 	/* nr_cpu_ids could be reduced via nr_cpus= */
 	if (possible > nr_cpu_ids) {
-		pr_warn("%d Processors exceeds NR_CPUS limit of %d\n",
+		pr_warn("%d Processors exceeds NR_CPUS limit of %u\n",
 			possible, nr_cpu_ids);
 		possible = nr_cpu_ids;
 	}

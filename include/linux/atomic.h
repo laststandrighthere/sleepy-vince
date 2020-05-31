@@ -38,6 +38,9 @@
  * Besides, if an arch has a special barrier for acquire/release, it could
  * implement its own __atomic_op_* and use the same framework for building
  * variants
+ *
+ * If an architecture overrides __atomic_op_acquire() it will probably want
+ * to define smp_mb__after_spinlock().
  */
 #ifndef __atomic_op_acquire
 #define __atomic_op_acquire(op, args...)				\
@@ -423,6 +426,29 @@
 #endif
 #endif /* atomic_cmpxchg_relaxed */
 
+#ifndef atomic_try_cmpxchg
+
+#define __atomic_try_cmpxchg(type, _p, _po, _n)				\
+({									\
+	typeof(_po) __po = (_po);					\
+	typeof(*(_po)) __r, __o = *__po;				\
+	__r = atomic_cmpxchg##type((_p), __o, (_n));			\
+	if (unlikely(__r != __o))					\
+		*__po = __r;						\
+	likely(__r == __o);						\
+})
+
+#define atomic_try_cmpxchg(_p, _po, _n)		__atomic_try_cmpxchg(, _p, _po, _n)
+#define atomic_try_cmpxchg_relaxed(_p, _po, _n)	__atomic_try_cmpxchg(_relaxed, _p, _po, _n)
+#define atomic_try_cmpxchg_acquire(_p, _po, _n)	__atomic_try_cmpxchg(_acquire, _p, _po, _n)
+#define atomic_try_cmpxchg_release(_p, _po, _n)	__atomic_try_cmpxchg(_release, _p, _po, _n)
+
+#else /* atomic_try_cmpxchg */
+#define atomic_try_cmpxchg_relaxed	atomic_try_cmpxchg
+#define atomic_try_cmpxchg_acquire	atomic_try_cmpxchg
+#define atomic_try_cmpxchg_release	atomic_try_cmpxchg
+#endif /* atomic_try_cmpxchg */
+
 /* cmpxchg_relaxed */
 #ifndef cmpxchg_relaxed
 #define  cmpxchg_relaxed		cmpxchg
@@ -627,6 +653,7 @@ static inline int atomic_dec_if_positive(atomic_t *v)
 }
 #endif
 
+#define atomic_cond_read_relaxed(v, c)	smp_cond_load_relaxed(&(v)->counter, (c))
 #define atomic_cond_read_acquire(v, c)	smp_cond_load_acquire(&(v)->counter, (c))
 
 #ifdef CONFIG_GENERIC_ATOMIC64
@@ -998,6 +1025,29 @@ static inline int atomic_dec_if_positive(atomic_t *v)
 #endif
 #endif /* atomic64_cmpxchg_relaxed */
 
+#ifndef atomic64_try_cmpxchg
+
+#define __atomic64_try_cmpxchg(type, _p, _po, _n)			\
+({									\
+	typeof(_po) __po = (_po);					\
+	typeof(*(_po)) __r, __o = *__po;				\
+	__r = atomic64_cmpxchg##type((_p), __o, (_n));			\
+	if (unlikely(__r != __o))					\
+		*__po = __r;						\
+	likely(__r == __o);						\
+})
+
+#define atomic64_try_cmpxchg(_p, _po, _n)		__atomic64_try_cmpxchg(, _p, _po, _n)
+#define atomic64_try_cmpxchg_relaxed(_p, _po, _n)	__atomic64_try_cmpxchg(_relaxed, _p, _po, _n)
+#define atomic64_try_cmpxchg_acquire(_p, _po, _n)	__atomic64_try_cmpxchg(_acquire, _p, _po, _n)
+#define atomic64_try_cmpxchg_release(_p, _po, _n)	__atomic64_try_cmpxchg(_release, _p, _po, _n)
+
+#else /* atomic64_try_cmpxchg */
+#define atomic64_try_cmpxchg_relaxed	atomic64_try_cmpxchg
+#define atomic64_try_cmpxchg_acquire	atomic64_try_cmpxchg
+#define atomic64_try_cmpxchg_release	atomic64_try_cmpxchg
+#endif /* atomic64_try_cmpxchg */
+
 #ifndef atomic64_andnot
 static inline void atomic64_andnot(long long i, atomic64_t *v)
 {
@@ -1025,6 +1075,7 @@ static inline long long atomic64_fetch_andnot_release(long long i, atomic64_t *v
 }
 #endif
 
+#define atomic64_cond_read_relaxed(v, c)	smp_cond_load_relaxed(&(v)->counter, (c))
 #define atomic64_cond_read_acquire(v, c)	smp_cond_load_acquire(&(v)->counter, (c))
 
 #include <asm-generic/atomic-long.h>

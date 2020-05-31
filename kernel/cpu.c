@@ -27,6 +27,7 @@
 #include <linux/relay.h>
 #include <linux/slab.h>
 #include <linux/highmem.h>
+#include <uapi/linux/sched/types.h>
 
 #include <trace/events/power.h>
 #define CREATE_TRACE_POINTS
@@ -976,6 +977,7 @@ static int takedown_cpu(unsigned int cpu)
 	__cpu_die(cpu);
 
 	tick_cleanup_dead_cpu(cpu);
+	rcutree_migrate_callbacks(cpu);
 	return 0;
 }
 
@@ -1445,6 +1447,8 @@ core_initcall(cpu_hotplug_pm_sync_init);
 
 #endif /* CONFIG_PM_SLEEP_SMP */
 
+int __boot_cpu_id;
+
 #endif /* CONFIG_SMP */
 
 /* Boot processor state steps */
@@ -1789,7 +1793,11 @@ EXPORT_SYMBOL_GPL(__cpuhp_state_add_instance);
  * @startup:	startup callback function
  * @teardown:	teardown callback function
  *
- * Returns 0 if successful, otherwise a proper error code
+ * Returns:
+ *   On success:
+ *      Positive state number if @state is CPUHP_AP_ONLINE_DYN
+ *      0 for all other states
+ *   On failure: proper (negative) error code
  */
 int __cpuhp_setup_state(enum cpuhp_state state,
 			const char *name, bool invoke,
@@ -2302,6 +2310,10 @@ void __init boot_cpu_init(void)
 	set_cpu_active(cpu, true);
 	set_cpu_present(cpu, true);
 	set_cpu_possible(cpu, true);
+
+#ifdef CONFIG_SMP
+	__boot_cpu_id = cpu;
+#endif
 }
 
 /*

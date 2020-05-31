@@ -193,7 +193,7 @@ void device_pm_move_last(struct device *dev)
 
 static ktime_t initcall_debug_start(struct device *dev)
 {
-	ktime_t calltime = ktime_set(0, 0);
+	ktime_t calltime = 0;
 
 	if (pm_print_times_enabled) {
 		pr_info("calling  %s+ @ %i, parent: %s\n",
@@ -1032,11 +1032,6 @@ static int __device_suspend_noirq(struct device *dev, pm_message_t state, bool a
 
 	if (async_error)
 		goto Complete;
-
-	if (pm_wakeup_pending()) {
-		async_error = -EBUSY;
-		goto Complete;
-	}
 
 	if (dev->power.syscore || dev->power.direct_complete)
 		goto Complete;

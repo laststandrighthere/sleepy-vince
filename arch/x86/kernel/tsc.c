@@ -2,6 +2,7 @@
 
 #include <linux/kernel.h>
 #include <linux/sched.h>
+#include <linux/sched/clock.h>
 #include <linux/init.h>
 #include <linux/export.h>
 #include <linux/timer.h>
@@ -284,7 +285,7 @@ static void set_cyc2ns_scale(unsigned long khz, int cpu)
 	cyc2ns_write_end(cpu, data);
 
 done:
-	sched_clock_idle_wakeup_event(0);
+	sched_clock_idle_wakeup_event();
 	local_irq_restore(flags);
 }
 /*
@@ -1100,9 +1101,28 @@ static struct clocksource clocksource_tsc;
  * checking the result of read_tsc() - cycle_last for being negative.
  * That works because CLOCKSOURCE_MASK(64) does not mask out any bit.
  */
-static cycle_t read_tsc(struct clocksource *cs)
+static u64 read_tsc(struct clocksource *cs)
 {
-	return (cycle_t)rdtsc_ordered();
+	return (u64)rdtsc_ordered();
+}
+
+static void tsc_cs_mark_unstable(struct clocksource *cs)
+{
+	if (tsc_unstable)
+		return;
+	tsc_unstable = 1;
+	clear_sched_clock_stable();
+	disable_sched_clock_irqtime();
+	pr_info("Marking TSC unstable due to clocksource watchdog\n");
+}
+
+static void tsc_cs_tick_stable(struct clocksource *cs)
+{
+	if (tsc_unstable)
+		return;
+
+	if (using_native_sched_clock())
+		sched_clock_tick_stable();
 }
 
 /*
@@ -1116,6 +1136,8 @@ static struct clocksource clocksource_tsc = {
 	.flags                  = CLOCK_SOURCE_IS_CONTINUOUS |
 				  CLOCK_SOURCE_MUST_VERIFY,
 	.archdata               = { .vclock_mode = VCLOCK_TSC },
+	.mark_unstable		= tsc_cs_mark_unstable,
+	.tick_stable		= tsc_cs_tick_stable,
 };
 
 void mark_tsc_unstable(char *reason)
@@ -1190,7 +1212,7 @@ int unsynchronized_tsc(void)
 /*
  * Convert ART to TSC given numerator/denominator found in detect_art()
  */
-struct system_counterval_t convert_art_to_tsc(cycle_t art)
+struct system_counterval_t convert_art_to_tsc(u64 art)
 {
 	u64 tmp, res, rem;
 

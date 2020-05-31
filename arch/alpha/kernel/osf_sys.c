@@ -1005,6 +1005,7 @@ SYSCALL_DEFINE2(osf_gettimeofday, struct timeval32 __user *, tv,
 SYSCALL_DEFINE2(osf_settimeofday, struct timeval32 __user *, tv,
 		struct timezone __user *, tz)
 {
+	struct timespec64 kts64;
 	struct timespec kts;
 	struct timezone ktz;
 
@@ -1012,19 +1013,25 @@ SYSCALL_DEFINE2(osf_settimeofday, struct timeval32 __user *, tv,
 		if (get_tv32((struct timeval *)&kts, tv))
 			return -EFAULT;
 		kts.tv_nsec *= 1000;
+		kts64 = timespec_to_timespec64(kts);
 	}
 	if (tz) {
 		if (copy_from_user(&ktz, tz, sizeof(*tz)))
 			return -EFAULT;
 	}
 
-	return do_sys_settimeofday(tv ? &kts : NULL, tz ? &ktz : NULL);
+	return do_sys_settimeofday64(tv ? &kts64 : NULL, tz ? &ktz : NULL);
 }
+
+asmlinkage long sys_ni_posix_timers(void);
 
 SYSCALL_DEFINE2(osf_getitimer, int, which, struct itimerval32 __user *, it)
 {
 	struct itimerval kit;
 	int error;
+
+	if (!IS_ENABLED(CONFIG_POSIX_TIMERS))
+		return sys_ni_posix_timers();
 
 	error = do_getitimer(which, &kit);
 	if (!error && put_it32(it, &kit))
@@ -1038,6 +1045,9 @@ SYSCALL_DEFINE3(osf_setitimer, int, which, struct itimerval32 __user *, in,
 {
 	struct itimerval kin, kout;
 	int error;
+
+	if (!IS_ENABLED(CONFIG_POSIX_TIMERS))
+		return sys_ni_posix_timers();
 
 	if (in) {
 		if (get_it32(&kin, in))
@@ -1138,7 +1148,7 @@ SYSCALL_DEFINE2(osf_getrusage, int, who, struct rusage32 __user *, ru)
 	memset(&r, 0, sizeof(r));
 	switch (who) {
 	case RUSAGE_SELF:
-		task_cputime(current, &utime, &stime);
+		task_cputime_t(current, &utime, &stime);
 		utime_jiffies = cputime_to_jiffies(utime);
 		stime_jiffies = cputime_to_jiffies(stime);
 		jiffies_to_timeval32(utime_jiffies, &r.ru_utime);
@@ -1147,8 +1157,8 @@ SYSCALL_DEFINE2(osf_getrusage, int, who, struct rusage32 __user *, ru)
 		r.ru_majflt = current->maj_flt;
 		break;
 	case RUSAGE_CHILDREN:
-		utime_jiffies = cputime_to_jiffies(current->signal->cutime);
-		stime_jiffies = cputime_to_jiffies(current->signal->cstime);
+		utime_jiffies = nsecs_to_jiffies(current->signal->cutime);
+		stime_jiffies = nsecs_to_jiffies(current->signal->cstime);
 		jiffies_to_timeval32(utime_jiffies, &r.ru_utime);
 		jiffies_to_timeval32(stime_jiffies, &r.ru_stime);
 		r.ru_minflt = current->signal->cmin_flt;

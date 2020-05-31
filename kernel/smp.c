@@ -14,6 +14,7 @@
 #include <linux/smp.h>
 #include <linux/cpu.h>
 #include <linux/sched.h>
+#include <linux/sched/idle.h>
 #include <linux/hypervisor.h>
 #include <linux/suspend.h>
 
@@ -27,6 +28,7 @@ enum {
 struct call_function_data {
 	struct call_single_data	__percpu *csd;
 	cpumask_var_t		cpumask;
+	cpumask_var_t		cpumask_ipi;
 };
 
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct call_function_data, cfd_data);
@@ -45,9 +47,15 @@ int smpcfd_prepare_cpu(unsigned int cpu)
 	if (!zalloc_cpumask_var_node(&cfd->cpumask, GFP_KERNEL,
 				     cpu_to_node(cpu)))
 		return -ENOMEM;
+	if (!zalloc_cpumask_var_node(&cfd->cpumask_ipi, GFP_KERNEL,
+				     cpu_to_node(cpu))) {
+		free_cpumask_var(cfd->cpumask);
+		return -ENOMEM;
+	}
 	cfd->csd = alloc_percpu(struct call_single_data);
 	if (!cfd->csd) {
 		free_cpumask_var(cfd->cpumask);
+		free_cpumask_var(cfd->cpumask_ipi);
 		return -ENOMEM;
 	}
 
@@ -59,6 +67,7 @@ int smpcfd_dead_cpu(unsigned int cpu)
 	struct call_function_data *cfd = &per_cpu(cfd_data, cpu);
 
 	free_cpumask_var(cfd->cpumask);
+	free_cpumask_var(cfd->cpumask_ipi);
 	free_percpu(cfd->csd);
 	return 0;
 }
@@ -205,7 +214,7 @@ static void flush_smp_call_function_queue(bool warn_cpu_offline)
 	struct call_single_data *csd, *csd_next;
 	static bool warned;
 
-	WARN_ON(!irqs_disabled());
+	lockdep_assert_irqs_disabled();
 
 	head = this_cpu_ptr(&call_single_queue);
 	entry = llist_del_all(head);
@@ -428,12 +437,13 @@ void smp_call_function_many(const struct cpumask *mask,
 	cfd = this_cpu_ptr(&cfd_data);
 
 	cpumask_and(cfd->cpumask, mask, cpu_online_mask);
-	cpumask_clear_cpu(this_cpu, cfd->cpumask);
+	__cpumask_clear_cpu(this_cpu, cfd->cpumask);
 
 	/* Some callers race with other cpus changing the passed mask */
 	if (unlikely(!cpumask_weight(cfd->cpumask)))
 		return;
 
+	cpumask_clear(cfd->cpumask_ipi);
 	for_each_cpu(cpu, cfd->cpumask) {
 		struct call_single_data *csd = per_cpu_ptr(cfd->csd, cpu);
 
@@ -442,11 +452,12 @@ void smp_call_function_many(const struct cpumask *mask,
 			csd->flags |= CSD_FLAG_SYNCHRONOUS;
 		csd->func = func;
 		csd->info = info;
-		llist_add(&csd->llist, &per_cpu(call_single_queue, cpu));
+		if (llist_add(&csd->llist, &per_cpu(call_single_queue, cpu)))
+			__cpumask_set_cpu(cpu, cfd->cpumask_ipi);
 	}
 
 	/* Send a message to all CPUs in the map */
-	arch_send_call_function_ipi_mask(cfd->cpumask);
+	arch_send_call_function_ipi_mask(cfd->cpumask_ipi);
 
 	if (wait) {
 		for_each_cpu(cpu, cfd->cpumask) {
@@ -551,7 +562,7 @@ static int __init boot_cpus(char *str)
 early_param("boot_cpus", boot_cpus);
 
 /* Setup number of possible processor ids */
-int nr_cpu_ids __read_mostly = NR_CPUS;
+unsigned int nr_cpu_ids __read_mostly = NR_CPUS;
 EXPORT_SYMBOL(nr_cpu_ids);
 
 /* An arch may set nr_cpu_ids earlier if needed, so this would be redundant */

@@ -21,6 +21,7 @@
 #include <linux/init.h>
 #include <linux/kdebug.h>
 #include <linux/sched.h>
+#include <linux/sched/clock.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/cpu.h>
@@ -2242,6 +2243,7 @@ void arch_perf_update_userpage(struct perf_event *event,
 			       struct perf_event_mmap_page *userpg, u64 now)
 {
 	struct cyc2ns_data *data;
+	u64 offset;
 
 	userpg->cap_user_time = 0;
 	userpg->cap_user_time_zero = 0;
@@ -2249,10 +2251,12 @@ void arch_perf_update_userpage(struct perf_event *event,
 		!!(event->hw.flags & PERF_X86_EVENT_RDPMC_ALLOWED);
 	userpg->pmc_width = x86_pmu.cntval_bits;
 
-	if (!sched_clock_stable())
+	if (!using_native_sched_clock() || !sched_clock_stable())
 		return;
 
 	data = cyc2ns_read_begin();
+
+	offset = data->cyc2ns_offset + __sched_clock_offset;
 
 	/*
 	 * Internal timekeeping for enabled/running/stopped times
@@ -2261,7 +2265,7 @@ void arch_perf_update_userpage(struct perf_event *event,
 	userpg->cap_user_time = 1;
 	userpg->time_mult = data->cyc2ns_mul;
 	userpg->time_shift = data->cyc2ns_shift;
-	userpg->time_offset = data->cyc2ns_offset - now;
+	userpg->time_offset = offset - now;
 
 	/*
 	 * cap_user_time_zero doesn't make sense when we're using a different
@@ -2269,7 +2273,7 @@ void arch_perf_update_userpage(struct perf_event *event,
 	 */
 	if (!event->attr.use_clockid) {
 		userpg->cap_user_time_zero = 1;
-		userpg->time_zero = data->cyc2ns_offset;
+		userpg->time_zero = offset;
 	}
 
 	cyc2ns_read_end(data);
@@ -2316,7 +2320,7 @@ static unsigned long get_segment_base(unsigned int segment)
 			return 0;
 
 		/* IRQs are off, so this synchronizes with smp_store_release */
-		ldt = lockless_dereference(current->active_mm->context.ldt);
+		ldt = READ_ONCE(current->active_mm->context.ldt);
 		if (!ldt || idx > ldt->size)
 			return 0;
 

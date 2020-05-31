@@ -38,6 +38,7 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/ipc_logging.h>
+#include <linux/sched/clock.h>
 
 #include <soc/qcom/ramdump.h>
 #include <soc/qcom/smd.h>

@@ -24,7 +24,7 @@ static bool mutex_is_locked_by(struct mutex *mutex, struct task_struct *task)
 		return false;
 
 #if defined(CONFIG_SMP) || defined(CONFIG_DEBUG_MUTEXES)
-	return mutex->owner == task;
+	return __mutex_owner(mutex) == task;
 #else
 	/* Since UP may be pre-empted, we cannot assume that we own the lock */
 	return false;
@@ -33,15 +33,20 @@ static bool mutex_is_locked_by(struct mutex *mutex, struct task_struct *task)
 
 static bool msm_gem_shrinker_lock(struct drm_device *dev, bool *unlock)
 {
-	if (!mutex_trylock(&dev->struct_mutex)) {
-		if (!mutex_is_locked_by(&dev->struct_mutex, current))
-			return false;
-		*unlock = false;
-	} else {
+	switch (mutex_trylock_recursive(&dev->struct_mutex)) {
+	case MUTEX_TRYLOCK_FAILED:
+		return false;
+
+	case MUTEX_TRYLOCK_SUCCESS:
 		*unlock = true;
+		return true;
+
+	case MUTEX_TRYLOCK_RECURSIVE:
+		*unlock = false;
+		return true;
 	}
 
-	return true;
+	BUG();
 }
 
 

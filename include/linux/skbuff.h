@@ -34,6 +34,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/netdev_features.h>
 #include <linux/sched.h>
+#include <linux/sched/clock.h>
 #include <net/flow_dissector.h>
 #include <linux/splice.h>
 #include <linux/in6.h>
@@ -3245,7 +3246,7 @@ static inline ktime_t net_timedelta(ktime_t t)
 
 static inline ktime_t net_invalid_timestamp(void)
 {
-	return ktime_set(0, 0);
+	return 0;
 }
 
 struct sk_buff *skb_clone_sk(struct sk_buff *skb);

@@ -21,6 +21,9 @@
  *          Davidlohr Bueso <dave@stgolabs.net>
  *	Based on kernel/rcu/torture.c.
  */
+
+#define pr_fmt(fmt) fmt
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/kthread.h>
@@ -32,6 +35,7 @@
 #include <linux/smp.h>
 #include <linux/interrupt.h>
 #include <linux/sched.h>
+#include <uapi/linux/sched/types.h>
 #include <linux/atomic.h>
 #include <linux/moduleparam.h>
 #include <linux/delay.h>
@@ -55,7 +59,7 @@ torture_param(int, shutdown_secs, 0, "Shutdown time (j), <= zero to disable.");
 torture_param(int, stat_interval, 60,
 	     "Number of seconds between stats printk()s");
 torture_param(int, stutter, 5, "Number of jiffies to run/halt test, 0=disable");
-torture_param(bool, verbose, true,
+torture_param(int, verbose, 1,
 	     "Enable verbose debugging printk()s");
 
 static char *torture_type = "spin_lock";
@@ -74,10 +78,6 @@ struct lock_stress_stats {
 	long n_lock_fail;
 	long n_lock_acquired;
 };
-
-int torture_runnable = IS_ENABLED(MODULE);
-module_param(torture_runnable, int, 0444);
-MODULE_PARM_DESC(torture_runnable, "Start locktorture at module init");
 
 /* Forward reference. */
 static void lock_torture_cleanup(void);
@@ -128,10 +128,8 @@ static void torture_lock_busted_write_delay(struct torture_random_state *trsp)
 	if (!(torture_random(trsp) %
 	      (cxt.nrealwriters_stress * 2000 * longdelay_ms)))
 		mdelay(longdelay_ms);
-#ifdef CONFIG_PREEMPT
 	if (!(torture_random(trsp) % (cxt.nrealwriters_stress * 20000)))
-		preempt_schedule();  /* Allow test to be preempted. */
-#endif
+		torture_preempt_schedule();  /* Allow test to be preempted. */
 }
 
 static void torture_lock_busted_write_unlock(void)
@@ -177,10 +175,8 @@ static void torture_spin_lock_write_delay(struct torture_random_state *trsp)
 	if (!(torture_random(trsp) %
 	      (cxt.nrealwriters_stress * 2 * shortdelay_us)))
 		udelay(shortdelay_us);
-#ifdef CONFIG_PREEMPT
 	if (!(torture_random(trsp) % (cxt.nrealwriters_stress * 20000)))
-		preempt_schedule();  /* Allow test to be preempted. */
-#endif
+		torture_preempt_schedule();  /* Allow test to be preempted. */
 }
 
 static void torture_spin_lock_write_unlock(void) __releases(torture_spinlock)
@@ -350,10 +346,8 @@ static void torture_mutex_delay(struct torture_random_state *trsp)
 		mdelay(longdelay_ms * 5);
 	else
 		mdelay(longdelay_ms / 5);
-#ifdef CONFIG_PREEMPT
 	if (!(torture_random(trsp) % (cxt.nrealwriters_stress * 20000)))
-		preempt_schedule();  /* Allow test to be preempted. */
-#endif
+		torture_preempt_schedule();  /* Allow test to be preempted. */
 }
 
 static void torture_mutex_unlock(void) __releases(torture_mutex)
@@ -370,6 +364,78 @@ static struct lock_torture_ops mutex_lock_ops = {
 	.read_delay     = NULL,
 	.readunlock     = NULL,
 	.name		= "mutex_lock"
+};
+
+#include <linux/ww_mutex.h>
+static DEFINE_WD_CLASS(torture_ww_class);
+static DEFINE_WW_MUTEX(torture_ww_mutex_0, &torture_ww_class);
+static DEFINE_WW_MUTEX(torture_ww_mutex_1, &torture_ww_class);
+static DEFINE_WW_MUTEX(torture_ww_mutex_2, &torture_ww_class);
+
+static int torture_ww_mutex_lock(void)
+__acquires(torture_ww_mutex_0)
+__acquires(torture_ww_mutex_1)
+__acquires(torture_ww_mutex_2)
+{
+	LIST_HEAD(list);
+	struct reorder_lock {
+		struct list_head link;
+		struct ww_mutex *lock;
+	} locks[3], *ll, *ln;
+	struct ww_acquire_ctx ctx;
+
+	locks[0].lock = &torture_ww_mutex_0;
+	list_add(&locks[0].link, &list);
+
+	locks[1].lock = &torture_ww_mutex_1;
+	list_add(&locks[1].link, &list);
+
+	locks[2].lock = &torture_ww_mutex_2;
+	list_add(&locks[2].link, &list);
+
+	ww_acquire_init(&ctx, &torture_ww_class);
+
+	list_for_each_entry(ll, &list, link) {
+		int err;
+
+		err = ww_mutex_lock(ll->lock, &ctx);
+		if (!err)
+			continue;
+
+		ln = ll;
+		list_for_each_entry_continue_reverse(ln, &list, link)
+			ww_mutex_unlock(ln->lock);
+
+		if (err != -EDEADLK)
+			return err;
+
+		ww_mutex_lock_slow(ll->lock, &ctx);
+		list_move(&ll->link, &list);
+	}
+
+	ww_acquire_fini(&ctx);
+	return 0;
+}
+
+static void torture_ww_mutex_unlock(void)
+__releases(torture_ww_mutex_0)
+__releases(torture_ww_mutex_1)
+__releases(torture_ww_mutex_2)
+{
+	ww_mutex_unlock(&torture_ww_mutex_0);
+	ww_mutex_unlock(&torture_ww_mutex_1);
+	ww_mutex_unlock(&torture_ww_mutex_2);
+}
+
+static struct lock_torture_ops ww_mutex_lock_ops = {
+	.writelock	= torture_ww_mutex_lock,
+	.write_delay	= torture_mutex_delay,
+	.task_boost     = torture_boost_dummy,
+	.writeunlock	= torture_ww_mutex_unlock,
+	.readlock       = NULL,
+	.read_delay     = NULL,
+	.readunlock     = NULL,
+	.name		= "ww_mutex_lock"
 };
 
 #ifdef CONFIG_RT_MUTEXES
@@ -433,10 +499,8 @@ static void torture_rtmutex_delay(struct torture_random_state *trsp)
 	if (!(torture_random(trsp) %
 	      (cxt.nrealwriters_stress * 2 * shortdelay_us)))
 		udelay(shortdelay_us);
-#ifdef CONFIG_PREEMPT
 	if (!(torture_random(trsp) % (cxt.nrealwriters_stress * 20000)))
-		preempt_schedule();  /* Allow test to be preempted. */
-#endif
+		torture_preempt_schedule();  /* Allow test to be preempted. */
 }
 
 static void torture_rtmutex_unlock(void) __releases(torture_rtmutex)
@@ -473,10 +537,8 @@ static void torture_rwsem_write_delay(struct torture_random_state *trsp)
 		mdelay(longdelay_ms * 10);
 	else
 		mdelay(longdelay_ms / 10);
-#ifdef CONFIG_PREEMPT
 	if (!(torture_random(trsp) % (cxt.nrealwriters_stress * 20000)))
-		preempt_schedule();  /* Allow test to be preempted. */
-#endif
+		torture_preempt_schedule();  /* Allow test to be preempted. */
 }
 
 static void torture_rwsem_up_write(void) __releases(torture_rwsem)
@@ -496,14 +558,12 @@ static void torture_rwsem_read_delay(struct torture_random_state *trsp)
 
 	/* We want a long delay occasionally to force massive contention.  */
 	if (!(torture_random(trsp) %
-	      (cxt.nrealwriters_stress * 2000 * longdelay_ms)))
+	      (cxt.nrealreaders_stress * 2000 * longdelay_ms)))
 		mdelay(longdelay_ms * 2);
 	else
 		mdelay(longdelay_ms / 2);
-#ifdef CONFIG_PREEMPT
 	if (!(torture_random(trsp) % (cxt.nrealreaders_stress * 20000)))
-		preempt_schedule();  /* Allow test to be preempted. */
-#endif
+		torture_preempt_schedule();  /* Allow test to be preempted. */
 }
 
 static void torture_rwsem_up_read(void) __releases(torture_rwsem)
@@ -796,6 +856,7 @@ static int __init lock_torture_init(void)
 		&spin_lock_ops, &spin_lock_irq_ops,
 		&rw_lock_ops, &rw_lock_irq_ops,
 		&mutex_lock_ops,
+		&ww_mutex_lock_ops,
 #ifdef CONFIG_RT_MUTEXES
 		&rtmutex_lock_ops,
 #endif
@@ -803,7 +864,7 @@ static int __init lock_torture_init(void)
 		&percpu_rwsem_lock_ops,
 	};
 
-	if (!torture_init_begin(torture_type, verbose, &torture_runnable))
+	if (!torture_init_begin(torture_type, verbose))
 		return -EBUSY;
 
 	/* Process args and tell the world that the torturer is on the job. */

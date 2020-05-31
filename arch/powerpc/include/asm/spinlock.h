@@ -206,9 +206,6 @@ out:
  * read-locks.
  */
 
-#define arch_read_can_lock(rw)		((rw)->lock >= 0)
-#define arch_write_can_lock(rw)	(!(rw)->lock)
-
 #ifdef CONFIG_PPC64
 #define __DO_SIGN_EXTEND	"extsw	%0,%0\n"
 #define WRLOCK_TOKEN		LOCK_TOKEN	/* it's negative */
@@ -333,6 +330,9 @@ static inline void arch_write_unlock(arch_rwlock_t *rw)
 #define arch_spin_relax(lock)	__spin_yield(lock)
 #define arch_read_relax(lock)	__rw_yield(lock)
 #define arch_write_relax(lock)	__rw_yield(lock)
+
+/* See include/linux/spinlock.h */
+#define smp_mb__after_spinlock()   smp_mb()
 
 #endif /* __KERNEL__ */
 #endif /* __ASM_SPINLOCK_H */

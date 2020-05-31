@@ -54,6 +54,7 @@
 #include <linux/time64.h>
 #include <linux/backing-dev.h>
 #include <linux/sort.h>
+#include <linux/sched/isolation.h>
 
 #include <asm/uaccess.h>
 #include <linux/atomic.h>
@@ -644,7 +645,6 @@ static int generate_sched_domains(cpumask_var_t **domains,
 	int csn;		/* how many cpuset ptrs in csa so far */
 	int i, j, k;		/* indices for partition finding loops */
 	cpumask_var_t *doms;	/* resulting partition; i.e. sched domains */
-	cpumask_var_t non_isolated_cpus;  /* load balanced CPUs */
 	struct sched_domain_attr *dattr;  /* attributes for custom domains */
 	int ndoms = 0;		/* number of sched domains in result */
 	int nslot;		/* next empty doms[] struct cpumask slot */
@@ -653,10 +653,6 @@ static int generate_sched_domains(cpumask_var_t **domains,
 	doms = NULL;
 	dattr = NULL;
 	csa = NULL;
-
-	if (!alloc_cpumask_var(&non_isolated_cpus, GFP_KERNEL))
-		goto done;
-	cpumask_andnot(non_isolated_cpus, cpu_possible_mask, cpu_isolated_map);
 
 	/* Special case for the 99% of systems with one, full, sched domain */
 	if (is_sched_load_balance(&top_cpuset)) {
@@ -671,7 +667,7 @@ static int generate_sched_domains(cpumask_var_t **domains,
 			update_domain_attr_tree(dattr, &top_cpuset);
 		}
 		cpumask_and(doms[0], top_cpuset.effective_cpus,
-				     non_isolated_cpus);
+			    housekeeping_cpumask(HK_FLAG_DOMAIN));
 
 		goto done;
 	}
@@ -695,7 +691,8 @@ static int generate_sched_domains(cpumask_var_t **domains,
 		 */
 		if (!cpumask_empty(cp->cpus_allowed) &&
 		    !(is_sched_load_balance(cp) &&
-		      cpumask_intersects(cp->cpus_allowed, non_isolated_cpus)))
+		      cpumask_intersects(cp->cpus_allowed,
+					 housekeeping_cpumask(HK_FLAG_DOMAIN))))
 			continue;
 
 		if (is_sched_load_balance(cp))
@@ -777,7 +774,7 @@ restart:
 
 			if (apn == b->pn) {
 				cpumask_or(dp, dp, b->effective_cpus);
-				cpumask_and(dp, dp, non_isolated_cpus);
+				cpumask_and(dp, dp, housekeeping_cpumask(HK_FLAG_DOMAIN));
 				if (dattr)
 					update_domain_attr_tree(dattr + nslot, b);
 
@@ -790,7 +787,6 @@ restart:
 	BUG_ON(nslot != ndoms);
 
 done:
-	free_cpumask_var(non_isolated_cpus);
 	kfree(csa);
 
 	/*
@@ -853,20 +849,6 @@ void rebuild_sched_domains(void)
 	put_online_cpus();
 }
 
-static int update_cpus_allowed(struct cpuset *cs, struct task_struct *p,
-			       const struct cpumask *new_mask)
-{
-	int ret;
-
-	if (cpumask_subset(&p->cpus_requested, cs->cpus_requested)) {
-		ret = set_cpus_allowed_ptr(p, &p->cpus_requested);
-		if (!ret)
-			return ret;
-	}
-
-	return set_cpus_allowed_ptr(p, new_mask);
-}
-
 /**
  * update_tasks_cpumask - Update the cpumasks of tasks in the cpuset.
  * @cs: the cpuset in which each task's cpus_allowed mask needs to be changed
@@ -882,7 +864,7 @@ static void update_tasks_cpumask(struct cpuset *cs)
 
 	css_task_iter_start(&cs->css, &it);
 	while ((task = css_task_iter_next(&it)))
-		update_cpus_allowed(cs, task, cs->effective_cpus);
+		set_cpus_allowed_ptr(task, cs->effective_cpus);
 	css_task_iter_end(&it);
 }
 
@@ -1565,7 +1547,7 @@ static void cpuset_attach(struct cgroup_taskset *tset)
 		 * can_attach beforehand should guarantee that this doesn't
 		 * fail.  TODO: have a better way to handle failure here
 		 */
-		WARN_ON_ONCE(update_cpus_allowed(cs, task, cpus_attach));
+		WARN_ON_ONCE(set_cpus_allowed_ptr(task, cpus_attach));
 
 		cpuset_change_task_nodemask(task, &cpuset_attach_nodemask_to);
 		cpuset_update_task_spread_flag(cs, task);
@@ -2426,12 +2408,7 @@ void cpuset_update_active_cpus(bool cpu_online)
 	 * inside cgroup synchronization.  Bounce actual hotplug processing
 	 * to a work item to avoid reverse locking order.
 	 *
-	 * We still need to do partition_sched_domains() synchronously;
-	 * otherwise, the scheduler will get confused and put tasks to the
-	 * dead CPU.  Fall back to the default single domain.
-	 * cpuset_hotplug_workfn() will rebuild it as necessary.
 	 */
-	partition_sched_domains(1, NULL, NULL);
 	schedule_work(&cpuset_hotplug_work);
 }
 

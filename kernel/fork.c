@@ -79,7 +79,6 @@
 #include <linux/compiler.h>
 #include <linux/sysctl.h>
 #include <linux/kcov.h>
-#include <linux/cpufreq_times.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -345,8 +344,6 @@ void put_task_stack(struct task_struct *tsk)
 
 void free_task(struct task_struct *tsk)
 {
-	cpufreq_task_times_exit(tsk);
-
 #ifndef CONFIG_THREAD_INFO_IN_TASK
 	/*
 	 * The task is finally done with both the stack and thread_info,
@@ -440,11 +437,13 @@ void __init fork_init(void)
 	int i;
 #ifndef CONFIG_ARCH_TASK_STRUCT_ALLOCATOR
 #ifndef ARCH_MIN_TASKALIGN
-#define ARCH_MIN_TASKALIGN	L1_CACHE_BYTES
+#define ARCH_MIN_TASKALIGN	0
 #endif
+	int align = min_t(int, L1_CACHE_BYTES, ARCH_MIN_TASKALIGN);
+
 	/* create a slab on which task_structs can be allocated */
 	task_struct_cachep = kmem_cache_create("task_struct",
-			arch_task_struct_size, ARCH_MIN_TASKALIGN,
+			arch_task_struct_size, align,
 			SLAB_PANIC|SLAB_NOTRACK|SLAB_ACCOUNT, NULL);
 #endif
 
@@ -461,6 +460,8 @@ void __init fork_init(void)
 	for (i = 0; i < UCOUNT_COUNTS; i++) {
 		init_user_ns.ucount_max[i] = max_threads/2;
 	}
+
+	lockdep_init_task(&init_task);
 }
 
 int __weak arch_dup_task_struct(struct task_struct *dst,
@@ -1334,6 +1335,7 @@ void __cleanup_sighand(struct sighand_struct *sighand)
 	}
 }
 
+#ifdef CONFIG_POSIX_TIMERS
 /*
  * Initialize POSIX timer handling for a thread group.
  */
@@ -1343,7 +1345,7 @@ static void posix_cpu_timers_init_group(struct signal_struct *sig)
 
 	cpu_limit = READ_ONCE(sig->rlim[RLIMIT_CPU].rlim_cur);
 	if (cpu_limit != RLIM_INFINITY) {
-		sig->cputime_expires.prof_exp = secs_to_cputime(cpu_limit);
+		sig->cputime_expires.prof_exp = cpu_limit * NSEC_PER_SEC;
 		sig->cputimer.running = true;
 	}
 
@@ -1352,6 +1354,9 @@ static void posix_cpu_timers_init_group(struct signal_struct *sig)
 	INIT_LIST_HEAD(&sig->cpu_timers[1]);
 	INIT_LIST_HEAD(&sig->cpu_timers[2]);
 }
+#else
+static inline void posix_cpu_timers_init_group(struct signal_struct *sig) { }
+#endif
 
 static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 {
@@ -1376,12 +1381,14 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	init_waitqueue_head(&sig->wait_chldexit);
 	sig->curr_target = tsk;
 	init_sigpending(&sig->shared_pending);
-	INIT_LIST_HEAD(&sig->posix_timers);
 	seqlock_init(&sig->stats_lock);
 	prev_cputime_init(&sig->prev_cputime);
 
+#ifdef CONFIG_POSIX_TIMERS
+	INIT_LIST_HEAD(&sig->posix_timers);
 	hrtimer_init(&sig->real_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	sig->real_timer.function = it_real_fn;
+#endif
 
 	task_lock(current->group_leader);
 	memcpy(sig->rlim, current->signal->rlim, sizeof sig->rlim);
@@ -1447,12 +1454,13 @@ static void rt_mutex_init_task(struct task_struct *p)
 {
 	raw_spin_lock_init(&p->pi_lock);
 #ifdef CONFIG_RT_MUTEXES
-	p->pi_waiters = RB_ROOT;
-	p->pi_waiters_leftmost = NULL;
+	p->pi_waiters = RB_ROOT_CACHED;
+	p->pi_top_task = NULL;
 	p->pi_blocked_on = NULL;
 #endif
 }
 
+#ifdef CONFIG_POSIX_TIMERS
 /*
  * Initialize POSIX timer handling for a single task.
  */
@@ -1465,6 +1473,9 @@ static void posix_cpu_timers_init(struct task_struct *tsk)
 	INIT_LIST_HEAD(&tsk->cpu_timers[1]);
 	INIT_LIST_HEAD(&tsk->cpu_timers[2]);
 }
+#else
+static inline void posix_cpu_timers_init(struct task_struct *tsk) { }
+#endif
 
 static inline void
 init_task_pid(struct task_struct *task, enum pid_type type, struct pid *pid)
@@ -1660,8 +1671,6 @@ static __latent_entropy struct task_struct *copy_process(
 	 */
 	p->clear_child_tid = (clone_flags & CLONE_CHILD_CLEARTID) ? child_tidptr : NULL;
 
-	cpufreq_task_times_init(p);
-
 	/*
 	 * This _must_ happen before we call free_task(), i.e. before we jump
 	 * to any of the bad_fork_* labels. This is to avoid freeing
@@ -1705,7 +1714,7 @@ static __latent_entropy struct task_struct *copy_process(
 		goto bad_fork_cleanup_count;
 
 	delayacct_tsk_init(p);	/* Must remain after dup_task_struct() */
-	p->flags &= ~(PF_SUPERPRIV | PF_WQ_WORKER);
+	p->flags &= ~(PF_SUPERPRIV | PF_WQ_WORKER | PF_IDLE);
 	p->flags |= PF_FORKNOEXEC;
 	INIT_LIST_HEAD(&p->children);
 	INIT_LIST_HEAD(&p->sibling);
@@ -1716,13 +1725,15 @@ static __latent_entropy struct task_struct *copy_process(
 	init_sigpending(&p->pending);
 
 	p->utime = p->stime = p->gtime = 0;
+#ifdef CONFIG_ARCH_HAS_SCALED_CPUTIME
 	p->utimescaled = p->stimescaled = 0;
+#endif
 	prev_cputime_init(&p->prev_cputime);
 
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
-	seqcount_init(&p->vtime_seqcount);
-	p->vtime_snap = 0;
-	p->vtime_snap_whence = VTIME_INACTIVE;
+	seqcount_init(&p->vtime.seqcount);
+	p->vtime.starttime = 0;
+	p->vtime.state = VTIME_INACTIVE;
 #endif
 
 #if defined(SPLIT_RSS_COUNTING)
@@ -1778,6 +1789,7 @@ static __latent_entropy struct task_struct *copy_process(
 	p->lockdep_depth = 0; /* no locks held yet */
 	p->curr_chain_key = 0;
 	p->lockdep_recursion = 0;
+	lockdep_init_task(p);
 #endif
 
 #ifdef CONFIG_DEBUG_MUTEXES
@@ -2053,7 +2065,7 @@ bad_fork_cleanup_audit:
 bad_fork_cleanup_perf:
 	perf_event_free_task(p);
 bad_fork_cleanup_policy:
-	free_task_load_ptrs(p);
+	lockdep_free_task(p);
 #ifdef CONFIG_NUMA
 	mpol_put(p->mempolicy);
 bad_fork_cleanup_threadgroup_lock:
@@ -2138,8 +2150,6 @@ long _do_fork(unsigned long clone_flags,
 	if (!IS_ERR(p)) {
 		struct completion vfork;
 		struct pid *pid;
-
-		cpufreq_task_times_alloc(p);
 
 		trace_sched_process_fork(current, p);
 

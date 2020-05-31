@@ -863,7 +863,7 @@ __nf_conntrack_confirm(struct sk_buff *skb)
 	/* set conntrack timestamp, if enabled. */
 	tstamp = nf_conn_tstamp_find(ct);
 	if (tstamp) {
-		if (skb->tstamp.tv64 == 0)
+		if (skb->tstamp == 0)
 			__net_timestamp(skb);
 
 		tstamp->start = ktime_to_ns(skb->tstamp);
@@ -1078,7 +1078,7 @@ static void gc_worker(struct work_struct *work)
 		 * we will just continue with next hash slot.
 		 */
 		rcu_read_unlock();
-		cond_resched_rcu_qs();
+		cond_resched();
 	} while (++buckets < goal);
 
 	if (gc_work->exiting)

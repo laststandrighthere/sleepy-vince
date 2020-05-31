@@ -27,6 +27,7 @@
 #include <linux/wait.h>
 #include <linux/delay.h>
 #include <linux/completion.h>
+#include <linux/sched/clock.h>
 #include <linux/ipc_logging.h>
 
 #include "ipc_logging_private.h"

@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/rtc.h>
 #include <linux/sched.h>
+#include <linux/sched/clock.h>
 #include <linux/sched_clock.h>
 #include <linux/kernel.h>
 #include <linux/param.h>
@@ -191,7 +192,7 @@ EXPORT_SYMBOL(profile_pc);
 
 /* clock source code */
 
-static cycle_t notrace read_cr16(struct clocksource *cs)
+static u64 notrace read_cr16(struct clocksource *cs)
 {
 	return get_cycles();
 }

@@ -14,6 +14,7 @@
 #include <linux/bitmap.h>
 #include <linux/io.h>
 #include "coresight-ost.h"
+#include <linux/sched/clock.h>
 #include <linux/coresight-stm.h>
 
 #define STM_USERSPACE_HEADER_SIZE	(8)
