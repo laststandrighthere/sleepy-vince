@@ -6,10 +6,6 @@
 #include <linux/sched/prio.h>
 #include <linux/nodemask.h>
 
-struct sched_param {
-	int sched_priority;
-};
-
 #include <asm/param.h>	/* for HZ */
 
 #include <linux/capability.h>
@@ -60,69 +56,8 @@ struct sched_param {
 
 #include <asm/processor.h>
 
-#define SCHED_ATTR_SIZE_VER0	48	/* sizeof first published struct */
-
-/*
- * Extended scheduling parameters data structure.
- *
- * This is needed because the original struct sched_param can not be
- * altered without introducing ABI issues with legacy applications
- * (e.g., in sched_getparam()).
- *
- * However, the possibility of specifying more than just a priority for
- * the tasks may be useful for a wide variety of application fields, e.g.,
- * multimedia, streaming, automation and control, and many others.
- *
- * This variant (sched_attr) is meant at describing a so-called
- * sporadic time-constrained task. In such model a task is specified by:
- *  - the activation period or minimum instance inter-arrival time;
- *  - the maximum (or average, depending on the actual scheduling
- *    discipline) computation time of all instances, a.k.a. runtime;
- *  - the deadline (relative to the actual activation time) of each
- *    instance.
- * Very briefly, a periodic (sporadic) task asks for the execution of
- * some specific computation --which is typically called an instance--
- * (at most) every period. Moreover, each instance typically lasts no more
- * than the runtime and must be completed by time instant t equal to
- * the instance activation time + the deadline.
- *
- * This is reflected by the actual fields of the sched_attr structure:
- *
- *  @size		size of the structure, for fwd/bwd compat.
- *
- *  @sched_policy	task's scheduling policy
- *  @sched_flags	for customizing the scheduler behaviour
- *  @sched_nice		task's nice value      (SCHED_NORMAL/BATCH)
- *  @sched_priority	task's static priority (SCHED_FIFO/RR)
- *  @sched_deadline	representative of the task's deadline
- *  @sched_runtime	representative of the task's runtime
- *  @sched_period	representative of the task's period
- *
- * Given this task model, there are a multiplicity of scheduling algorithms
- * and policies, that can be used to ensure all the tasks will make their
- * timing constraints.
- *
- * As of now, the SCHED_DEADLINE policy (sched_dl scheduling class) is the
- * only user of this new interface. More information about the algorithm
- * available in the scheduling class file or in Documentation/.
- */
-struct sched_attr {
-	u32 size;
-
-	u32 sched_policy;
-	u64 sched_flags;
-
-	/* SCHED_NORMAL, SCHED_BATCH */
-	s32 sched_nice;
-
-	/* SCHED_FIFO, SCHED_RR */
-	u32 sched_priority;
-
-	/* SCHED_DEADLINE */
-	u64 sched_runtime;
-	u64 sched_deadline;
-	u64 sched_period;
-};
+struct sched_attr;
+struct sched_param;
 
 struct futex_pi_state;
 struct robust_list_head;
@@ -855,6 +790,24 @@ extern struct user_struct root_user;
 struct backing_dev_info;
 struct reclaim_state;
 
+enum vtime_state {
+	/* Task is sleeping or running in a CPU with VTIME inactive: */
+	VTIME_INACTIVE = 0,
+	/* Task runs in userspace in a CPU with VTIME active: */
+	VTIME_USER,
+	/* Task runs in kernelspace in a CPU with VTIME active: */
+	VTIME_SYS,
+};
+
+struct vtime {
+	seqcount_t		seqcount;
+	unsigned long long	starttime;
+	enum vtime_state	state;
+	u64			utime;
+	u64			stime;
+	u64			gtime;
+};
+
 #ifdef CONFIG_SCHED_INFO
 struct sched_info {
 	/* cumulative counters */
@@ -1099,14 +1052,30 @@ struct sched_dl_entity {
 	 *
 	 * @dl_yielded tells if task gave up the cpu before consuming
 	 * all its available runtime during the last job.
+	 *
+	 * @dl_non_contending tells if the task is inactive while still
+	 * contributing to the active utilization. In other words, it
+	 * indicates if the inactive timer has been armed and its handler
+	 * has not been executed yet. This flag is useful to avoid race
+	 * conditions between the inactive timer handler and the wakeup
+	 * code.
 	 */
-	int dl_throttled, dl_boosted, dl_yielded;
+	int dl_throttled, dl_boosted, dl_yielded, dl_non_contending;
 
 	/*
 	 * Bandwidth enforcement timer. Each -deadline task has its
 	 * own bandwidth to be enforced, thus we need one timer per task.
 	 */
 	struct hrtimer dl_timer;
+
+	/*
+	 * Inactive timer, responsible for decreasing the active utilization
+	 * at the "0-lag time". When a -deadline task blocks, it contributes
+	 * to GRUB's active utilization until the "0-lag time", hence a
+	 * timer is needed to decrease the active utilization at the correct
+	 * time.
+	 */
+	struct hrtimer inactive_timer;
 };
 
 union rcu_special {
@@ -1320,16 +1289,7 @@ struct task_struct {
 	u64 gtime;
 	struct prev_cputime prev_cputime;
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
-	seqcount_t vtime_seqcount;
-	unsigned long long vtime_snap;
-	enum {
-		/* Task is sleeping or running in a CPU with VTIME inactive */
-		VTIME_INACTIVE = 0,
-		/* Task runs in userspace in a CPU with VTIME active */
-		VTIME_USER,
-		/* Task runs in kernelspace in a CPU with VTIME active */
-		VTIME_SYS,
-	} vtime_snap_whence;
+	struct vtime vtime;
 #endif
 
 #ifdef CONFIG_NO_HZ_FULL
@@ -1910,7 +1870,6 @@ static inline void put_task_struct(struct task_struct *t)
 }
 
 struct task_struct *task_rcu_dereference(struct task_struct **ptask);
-struct task_struct *try_get_task_struct(struct task_struct **ptask);
 
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
 extern void task_cputime(struct task_struct *t,

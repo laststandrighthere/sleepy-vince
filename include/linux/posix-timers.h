@@ -7,6 +7,7 @@
 #include <linux/timex.h>
 #include <linux/alarmtimer.h>
 
+struct siginfo;
 
 struct cpu_timer_list {
 	struct list_head entry;
@@ -53,13 +54,16 @@ struct k_itimer {
 	struct list_head list;		/* free/ allocate list */
 	struct hlist_node t_hash;
 	spinlock_t it_lock;
+	const struct k_clock *kclock;
 	clockid_t it_clock;		/* which timer type */
 	timer_t it_id;			/* timer id */
+	int it_active;
 	s64 it_overrun;			/* overrun on pending signal  */
 	s64 it_overrun_last;		/* overrun on last delivered signal */
 	int it_requeue_pending;		/* waiting to requeue this timer */
 #define REQUEUE_PENDING 1
 	int it_sigev_notify;		/* notify word of sigevent struct */
+	ktime_t it_interval;
 	struct signal_struct *it_signal;
 	union {
 		struct pid *it_pid;	/* pid of process to send signal to */
@@ -69,7 +73,6 @@ struct k_itimer {
 	union {
 		struct {
 			struct hrtimer timer;
-			ktime_t interval;
 		} real;
 		struct cpu_timer_list cpu;
 		struct {
@@ -80,40 +83,10 @@ struct k_itimer {
 		} mmtimer;
 		struct {
 			struct alarm alarmtimer;
-			ktime_t interval;
 		} alarm;
 		struct rcu_head rcu;
 	} it;
 };
-
-struct k_clock {
-	int (*clock_getres) (const clockid_t which_clock, struct timespec64 *tp);
-	int (*clock_set) (const clockid_t which_clock,
-			  const struct timespec64 *tp);
-	int (*clock_get) (const clockid_t which_clock, struct timespec64 *tp);
-	int (*clock_adj) (const clockid_t which_clock, struct timex *tx);
-	int (*timer_create) (struct k_itimer *timer);
-	int (*nsleep) (const clockid_t which_clock, int flags,
-		       struct timespec64 *, struct timespec __user *);
-	long (*nsleep_restart) (struct restart_block *restart_block);
-	int (*timer_set) (struct k_itimer *timr, int flags,
-			  struct itimerspec64 *new_setting,
-			  struct itimerspec64 *old_setting);
-	int (*timer_del) (struct k_itimer *timr);
-#define TIMER_RETRY 1
-	void (*timer_get) (struct k_itimer *timr,
-			   struct itimerspec64 *cur_setting);
-};
-
-extern struct k_clock clock_posix_cpu;
-extern struct k_clock clock_posix_dynamic;
-
-void posix_timers_register_clock(const clockid_t clock_id, struct k_clock *new_clock);
-
-/* function to call to trigger timer event */
-int posix_timer_event(struct k_itimer *timr, int si_private);
-
-void posix_cpu_timer_schedule(struct k_itimer *timer);
 
 void run_posix_cpu_timers(struct task_struct *task);
 void posix_cpu_timers_exit(struct task_struct *task);
@@ -121,8 +94,7 @@ void posix_cpu_timers_exit_group(struct task_struct *task);
 void set_process_cpu_timer(struct task_struct *task, unsigned int clock_idx,
 			   u64 *newval, u64 *oldval);
 
-long clock_nanosleep_restart(struct restart_block *restart_block);
-
 void update_rlimit_cpu(struct task_struct *task, unsigned long rlim_new);
 
+void posixtimer_rearm(struct siginfo *info);
 #endif
