@@ -58,8 +58,6 @@ void call_rcu(struct rcu_head *head, rcu_callback_t func);
 void call_rcu_bh(struct rcu_head *head, rcu_callback_t func);
 void call_rcu_sched(struct rcu_head *head, rcu_callback_t func);
 void synchronize_sched(void);
-void call_rcu_tasks(struct rcu_head *head, rcu_callback_t func);
-void synchronize_rcu_tasks(void);
 void rcu_barrier_tasks(void);
 
 #ifdef CONFIG_PREEMPT_RCU
@@ -103,17 +101,13 @@ static inline int rcu_preempt_depth(void)
 
 /* Internal to kernel */
 void rcu_init(void);
+extern int rcu_scheduler_active __read_mostly;
 void rcu_sched_qs(void);
 void rcu_bh_qs(void);
 void rcu_check_callbacks(int user);
 void rcu_report_dead(unsigned int cpu);
 void rcu_cpu_starting(unsigned int cpu);
-
-#ifndef CONFIG_TINY_RCU
-void rcu_end_inkernel_boot(void);
-#else /* #ifndef CONFIG_TINY_RCU */
-static inline void rcu_end_inkernel_boot(void) { }
-#endif /* #ifndef CONFIG_TINY_RCU */
+void rcutree_migrate_callbacks(int cpu);
 
 #ifdef CONFIG_RCU_STALL_COMMON
 void rcu_sysrq_start(void);
@@ -168,8 +162,6 @@ static inline void rcu_init_nohz(void) { }
  * macro rather than an inline function to avoid #include hell.
  */
 #ifdef CONFIG_TASKS_RCU
-#define TASKS_RCU(x) x
-extern struct srcu_struct tasks_rcu_exit_srcu;
 #define rcu_note_voluntary_context_switch_lite(t) \
 	do { \
 		if (READ_ONCE((t)->rcu_tasks_holdout)) \
@@ -180,10 +172,17 @@ extern struct srcu_struct tasks_rcu_exit_srcu;
 		rcu_all_qs(); \
 		rcu_note_voluntary_context_switch_lite(t); \
 	} while (0)
+void call_rcu_tasks(struct rcu_head *head, rcu_callback_t func);
+void synchronize_rcu_tasks(void);
+void exit_tasks_rcu_start(void);
+void exit_tasks_rcu_finish(void);
 #else /* #ifdef CONFIG_TASKS_RCU */
-#define TASKS_RCU(x) do { } while (0)
 #define rcu_note_voluntary_context_switch_lite(t)	do { } while (0)
 #define rcu_note_voluntary_context_switch(t)		rcu_all_qs()
+#define call_rcu_tasks call_rcu_sched
+#define synchronize_rcu_tasks synchronize_sched
+static inline void exit_tasks_rcu_start(void) { }
+static inline void exit_tasks_rcu_finish(void) { }
 #endif /* #else #ifdef CONFIG_TASKS_RCU */
 
 /**
@@ -506,7 +505,7 @@ static inline void rcu_preempt_sleep_check(void) { }
  * Return the value of the specified RCU-protected pointer, but omit
  * both the smp_read_barrier_depends() and the READ_ONCE().  This
  * is useful in cases where update-side locks prevent the value of the
- * pointer from changing.  Please note that this primitive does -not-
+ * pointer from changing.  Please note that this primitive does *not*
  * prevent the compiler from repeating this reference or combining it
  * with other references, so it should not be used without protection
  * of appropriate locks.
@@ -551,7 +550,7 @@ static inline void rcu_preempt_sleep_check(void) { }
  * is handed off from RCU to some other synchronization mechanism, for
  * example, reference counting or locking.  In C11, it would map to
  * kill_dependency().  It could be used as follows:
- *
+ * ``
  *	rcu_read_lock();
  *	p = rcu_dereference(gp);
  *	long_lived = is_long_lived(p);
@@ -562,6 +561,7 @@ static inline void rcu_preempt_sleep_check(void) { }
  *			p = rcu_pointer_handoff(p);
  *	}
  *	rcu_read_unlock();
+ *``
  */
 #define rcu_pointer_handoff(p) (p)
 
@@ -761,18 +761,21 @@ static inline notrace void rcu_read_unlock_sched_notrace(void)
 
 /**
  * RCU_INIT_POINTER() - initialize an RCU protected pointer
+ * @p: The pointer to be initialized.
+ * @v: The value to initialized the pointer to.
  *
  * Initialize an RCU-protected pointer in special cases where readers
  * do not need ordering constraints on the CPU or the compiler.  These
  * special cases are:
  *
- * 1.	This use of RCU_INIT_POINTER() is NULLing out the pointer -or-
+ * 1.	This use of RCU_INIT_POINTER() is NULLing out the pointer *or*
  * 2.	The caller has taken whatever steps are required to prevent
- *	RCU readers from concurrently accessing this pointer -or-
+ *	RCU readers from concurrently accessing this pointer *or*
  * 3.	The referenced data structure has already been exposed to
- *	readers either at compile time or via rcu_assign_pointer() -and-
- *	a.	You have not made -any- reader-visible changes to
- *		this structure since then -or-
+ *	readers either at compile time or via rcu_assign_pointer() *and*
+ *
+ *	a.	You have not made *any* reader-visible changes to
+ *		this structure since then *or*
  *	b.	It is OK for readers accessing this structure from its
  *		new location to see the old state of the structure.  (For
  *		example, the changes were to statistical counters or to
@@ -788,7 +791,7 @@ static inline notrace void rcu_read_unlock_sched_notrace(void)
  * by a single external-to-structure RCU-protected pointer, then you may
  * use RCU_INIT_POINTER() to initialize the internal RCU-protected
  * pointers, but you must use rcu_assign_pointer() to initialize the
- * external-to-structure pointer -after- you have completely initialized
+ * external-to-structure pointer *after* you have completely initialized
  * the reader-accessible portions of the linked structure.
  *
  * Note that unlike rcu_assign_pointer(), RCU_INIT_POINTER() provides no
@@ -802,6 +805,8 @@ static inline notrace void rcu_read_unlock_sched_notrace(void)
 
 /**
  * RCU_POINTER_INITIALIZER() - statically initialize an RCU protected pointer
+ * @p: The pointer to be initialized.
+ * @v: The value to initialized the pointer to.
  *
  * GCC-style initialization for an RCU-protected pointer in a structure field.
  */

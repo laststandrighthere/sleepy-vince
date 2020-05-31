@@ -228,7 +228,6 @@ extern void sched_init(void);
 extern void sched_init_smp(void);
 extern asmlinkage void schedule_tail(struct task_struct *prev);
 extern void init_idle(struct task_struct *idle, int cpu);
-extern void init_idle_bootup_task(struct task_struct *idle);
 
 extern cpumask_var_t cpu_isolated_map;
 
@@ -1178,9 +1177,10 @@ struct task_struct {
 #endif /* #ifdef CONFIG_PREEMPT_RCU */
 #ifdef CONFIG_TASKS_RCU
 	unsigned long rcu_tasks_nvcsw;
-	bool rcu_tasks_holdout;
-	struct list_head rcu_tasks_holdout_list;
+	u8 rcu_tasks_holdout;
+	u8 rcu_tasks_idx;
 	int rcu_tasks_idle_cpu;
+	struct list_head rcu_tasks_holdout_list;
 #endif /* #ifdef CONFIG_TASKS_RCU */
 
 #ifdef CONFIG_SCHED_INFO
@@ -1368,8 +1368,7 @@ struct task_struct {
 
 #ifdef CONFIG_RT_MUTEXES
 	/* PI waiters blocked on a rt_mutex held by this task */
-	struct rb_root pi_waiters;
-	struct rb_node *pi_waiters_leftmost;
+	struct rb_root_cached pi_waiters;
 	/* Updated under owner's pi_lock and rq lock */
 	struct task_struct *pi_top_task;
 	/* Deadlock detection and priority inheritance handling */
@@ -1401,7 +1400,16 @@ struct task_struct {
 	int lockdep_depth;
 	unsigned int lockdep_recursion;
 	struct held_lock held_locks[MAX_LOCK_DEPTH];
-	gfp_t lockdep_reclaim_gfp;
+#endif
+#ifdef CONFIG_LOCKDEP_CROSSRELEASE
+#define MAX_XHLOCKS_NR 64UL
+	struct hist_lock *xhlocks; /* Crossrelease history locks */
+	unsigned int xhlock_idx;
+	/* For restoring at history boundaries */
+	unsigned int xhlock_idx_hist[XHLOCK_CTX_NR];
+	unsigned int hist_id;
+	/* For overwrite check at each context exit */
+	unsigned int hist_id_save[XHLOCK_CTX_NR];
 #endif
 #ifdef CONFIG_UBSAN
 	unsigned int in_ubsan;
@@ -1999,6 +2007,14 @@ static inline gfp_t memalloc_noio_flags(gfp_t flags)
 	return flags;
 }
 
+#ifdef CONFIG_LOCKDEP
+extern void fs_reclaim_acquire(gfp_t gfp_mask);
+extern void fs_reclaim_release(gfp_t gfp_mask);
+#else
+static inline void fs_reclaim_acquire(gfp_t gfp_mask) { }
+static inline void fs_reclaim_release(gfp_t gfp_mask) { }
+#endif
+
 static inline unsigned int memalloc_noio_save(void)
 {
 	unsigned int flags = current->flags & PF_MEMALLOC_NOIO;
@@ -2010,6 +2026,22 @@ static inline void memalloc_noio_restore(unsigned int flags)
 {
 	current->flags = (current->flags & ~PF_MEMALLOC_NOIO) | flags;
 }
+
+#ifdef CONFIG_MEMBARRIER
+enum {
+	MEMBARRIER_STATE_PRIVATE_EXPEDITED_READY	= (1U << 0),
+	MEMBARRIER_STATE_SWITCH_MM			= (1U << 1),
+};
+
+static inline void membarrier_execve(struct task_struct *t)
+{
+	atomic_set(&t->mm->membarrier_state, 0);
+}
+#else
+static inline void membarrier_execve(struct task_struct *t)
+{
+}
+#endif
 
 /* Per-process atomic flags. */
 #define PFA_NO_NEW_PRIVS 0	/* May not gain new privileges. */

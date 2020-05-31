@@ -58,7 +58,7 @@ static inline unsigned int get_freq_target(struct cs_dbs_tuners *cs_tuners,
  * Any frequency increase takes it to the maximum frequency. Frequency reduction
  * happens at minimum steps of 5% (default) of maximum frequency
  */
-static unsigned int cs_dbs_timer(struct cpufreq_policy *policy)
+static unsigned int cs_dbs_update(struct cpufreq_policy *policy)
 {
 	struct policy_dbs_info *policy_dbs = policy->governor_data;
 	struct cs_policy_dbs_info *dbs_info = to_dbs_info(policy_dbs);
@@ -230,7 +230,6 @@ gov_show_one_common(sampling_rate);
 gov_show_one_common(sampling_down_factor);
 gov_show_one_common(up_threshold);
 gov_show_one_common(ignore_nice_load);
-gov_show_one_common(min_sampling_rate);
 gov_show_one(cs, down_threshold);
 gov_show_one(cs, freq_step);
 
@@ -238,12 +237,10 @@ gov_attr_rw(sampling_rate);
 gov_attr_rw(sampling_down_factor);
 gov_attr_rw(up_threshold);
 gov_attr_rw(ignore_nice_load);
-gov_attr_ro(min_sampling_rate);
 gov_attr_rw(down_threshold);
 gov_attr_rw(freq_step);
 
 static struct attribute *cs_attributes[] = {
-	&min_sampling_rate.attr,
 	&sampling_rate.attr,
 	&sampling_down_factor.attr,
 	&up_threshold.attr,
@@ -281,10 +278,7 @@ static int cs_init(struct dbs_data *dbs_data)
 	dbs_data->up_threshold = DEF_FREQUENCY_UP_THRESHOLD;
 	dbs_data->sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR;
 	dbs_data->ignore_nice_load = 0;
-
 	dbs_data->tuners = tuners;
-	dbs_data->min_sampling_rate = MIN_SAMPLING_RATE_RATIO *
-		jiffies_to_usecs(10);
 
 	return 0;
 }
@@ -308,7 +302,7 @@ static
 struct dbs_governor cs_governor = {
 	.gov = CPUFREQ_DBS_GOVERNOR_INITIALIZER("conservative"),
 	.kobj_type = { .default_attrs = cs_attributes },
-	.gov_dbs_timer = cs_dbs_timer,
+	.gov_dbs_update = cs_dbs_update,
 	.alloc = cs_alloc,
 	.free = cs_free,
 	.init = cs_init,

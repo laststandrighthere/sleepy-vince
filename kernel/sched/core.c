@@ -1167,6 +1167,10 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 	WARN_ON_ONCE(debug_locks && !(lockdep_is_held(&p->pi_lock) ||
 				      lockdep_is_held(&task_rq(p)->lock)));
 #endif
+	/*
+	 * Clearly, migrating tasks to offline CPUs is a fairly daft thing.
+	 */
+	WARN_ON_ONCE(!cpu_online(new_cpu));
 #endif
 
 	trace_sched_migrate_task(p, new_cpu);
@@ -1966,8 +1970,8 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	 * reordered with p->state check below. This pairs with mb() in
 	 * set_current_state() the waiting thread does.
 	 */
-	smp_mb__before_spinlock();
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
+	smp_mb__after_spinlock();
 	if (!(p->state & state))
 		goto out;
 
@@ -2634,6 +2638,16 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 	prev_state = prev->state;
 	vtime_task_switch(prev);
 	perf_event_task_sched_in(prev, current);
+	/*
+	 * The membarrier system call requires a full memory barrier
+	 * after storing to rq->curr, before going back to user-space.
+	 *
+	 * TODO: This smp_mb__after_unlock_lock can go away if PPC end
+	 * up adding a full barrier to switch_mm(), or we should figure
+	 * out if a smp_mb__after_unlock_lock is really the proper API
+	 * to use.
+	 */
+	smp_mb__after_unlock_lock();
 	finish_lock_switch(rq, prev);
 	finish_arch_post_lock_switch();
 
@@ -3280,8 +3294,8 @@ static void __sched notrace __schedule(bool preempt)
 	 * can't be reordered with __set_current_state(TASK_INTERRUPTIBLE)
 	 * done by the caller to avoid the race with signal_wake_up().
 	 */
-	smp_mb__before_spinlock();
 	rq_lock(rq, &rf);
+	smp_mb__after_spinlock();
 
 	/* Promote REQ to ACT */
 	rq->clock_update_flags <<= 1;
@@ -3323,6 +3337,21 @@ static void __sched notrace __schedule(bool preempt)
 	if (likely(prev != next)) {
 		rq->nr_switches++;
 		rq->curr = next;
+		/*
+		 * The membarrier system call requires each architecture
+		 * to have a full memory barrier after updating
+		 * rq->curr, before returning to user-space. For TSO
+		 * (e.g. x86), the architecture must provide its own
+		 * barrier in switch_mm(). For weakly ordered machines
+		 * for which spin_unlock() acts as a full memory
+		 * barrier, finish_lock_switch() in common code takes
+		 * care of this barrier. For weakly ordered machines for
+		 * which spin_unlock() acts as a RELEASE barrier (only
+		 * arm64 and PowerPC), arm64 has a full barrier in
+		 * switch_to(), and PowerPC has
+		 * smp_mb__after_unlock_lock() before
+		 * finish_lock_switch().
+		 */
 		++*switch_count;
 
 		trace_sched_switch(preempt, prev, next);
@@ -3351,8 +3380,8 @@ void __noreturn do_task_dead(void)
 	 * To avoid it, we have to wait for releasing tsk->pi_lock which
 	 * is held by try_to_wake_up()
 	 */
-	smp_mb();
-	raw_spin_unlock_wait(&current->pi_lock);
+	raw_spin_lock_irq(&current->pi_lock);
+	raw_spin_unlock_irq(&current->pi_lock);
 
 	/* Causes final put_task_struct in finish_task_switch(): */
 	__set_current_state(TASK_DEAD);
@@ -5176,11 +5205,6 @@ void show_state_filter(unsigned long state_filter)
 		debug_show_all_locks();
 }
 
-void init_idle_bootup_task(struct task_struct *idle)
-{
-	idle->sched_class = &idle_sched_class;
-}
-
 /**
  * init_idle - set up an idle thread for a given CPU
  * @idle: task in question
@@ -5439,7 +5463,7 @@ static void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf)
 		 */
 		next = pick_next_task(rq, &fake_task, rf);
 		BUG_ON(!next);
-		next->sched_class->put_prev_task(rq, next);
+		put_prev_task(rq, next);
 
 		/*
 		 * Rules for changing task_struct::cpus_allowed are holding
