@@ -97,6 +97,7 @@ void do_trace_rcu_torture_read(const char *rcutorturename,
 			       unsigned long secs,
 			       unsigned long c_old,
 			       unsigned long c);
+bool rcu_irq_enter_disabled(void);
 #else
 static inline void rcutorture_get_gp_data(enum rcutorture_type test_type,
 					  int *flags,
@@ -112,6 +113,10 @@ static inline void rcutorture_record_test_transition(void)
 }
 static inline void rcutorture_record_progress(unsigned long vernum)
 {
+}
+static inline bool rcu_irq_enter_disabled(void)
+{
+	return false;
 }
 #ifdef CONFIG_RCU_TRACE
 void do_trace_rcu_torture_read(const char *rcutorturename,
@@ -361,15 +366,20 @@ static inline void rcu_init_nohz(void)
 #ifdef CONFIG_TASKS_RCU
 #define TASKS_RCU(x) x
 extern struct srcu_struct tasks_rcu_exit_srcu;
-#define rcu_note_voluntary_context_switch(t) \
+#define rcu_note_voluntary_context_switch_lite(t) \
 	do { \
-		rcu_all_qs(); \
 		if (READ_ONCE((t)->rcu_tasks_holdout)) \
 			WRITE_ONCE((t)->rcu_tasks_holdout, false); \
 	} while (0)
+#define rcu_note_voluntary_context_switch(t) \
+	do { \
+		rcu_all_qs(); \
+		rcu_note_voluntary_context_switch_lite(t); \
+	} while (0)
 #else /* #ifdef CONFIG_TASKS_RCU */
 #define TASKS_RCU(x) do { } while (0)
-#define rcu_note_voluntary_context_switch(t)	rcu_all_qs()
+#define rcu_note_voluntary_context_switch_lite(t)	do { } while (0)
+#define rcu_note_voluntary_context_switch(t)		rcu_all_qs()
 #endif /* #else #ifdef CONFIG_TASKS_RCU */
 
 /**
