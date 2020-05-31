@@ -34,6 +34,7 @@
 #include <linux/errno.h>
 #include <linux/export.h>
 #include <linux/sched.h>
+#include <linux/sched/clock.h>
 #include <linux/kernel.h>
 #include <linux/param.h>
 #include <linux/string.h>
@@ -376,15 +377,13 @@ void vtime_account_idle(struct task_struct *tsk)
 }
 
 /*
- * Transfer the user time accumulated in the paca
- * by the exception entry and exit code to the generic
- * process user time records.
+ * Account the whole cputime accumulated in the paca
  * Must be called with interrupts disabled.
  * Assumes that vtime_account_system/idle() has been called
  * recently (i.e. since the last entry from usermode) so that
  * get_paca()->user_time_scaled is up to date.
  */
-void vtime_account_user(struct task_struct *tsk)
+void vtime_flush(struct task_struct *tsk)
 {
 	cputime_t utime, utimescaled;
 	struct cpu_accounting_data *acct = get_accounting(tsk);
