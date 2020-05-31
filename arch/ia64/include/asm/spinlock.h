@@ -148,9 +148,6 @@ static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
 	__ticket_spin_unlock_wait(lock);
 }
 
-#define arch_read_can_lock(rw)		(*(volatile int *)(rw) >= 0)
-#define arch_write_can_lock(rw)	(*(volatile int *)(rw) == 0)
-
 #ifdef ASM_SUPPORTED
 
 static __always_inline void

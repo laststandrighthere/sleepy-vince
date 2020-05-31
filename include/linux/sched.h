@@ -919,9 +919,9 @@ struct load_weight {
  * issues.
  */
 struct sched_avg {
-	u64 last_update_time, load_sum;
+	u64 last_update_time, load_sum, runnable_load_sum;
 	u32 util_sum, period_contrib;
-	unsigned long load_avg, util_avg;
+	unsigned long load_avg, runnable_load_avg, util_avg;
 };
 
 #ifdef CONFIG_SCHEDSTATS
@@ -962,6 +962,7 @@ struct sched_statistics {
 
 struct sched_entity {
 	struct load_weight	load;		/* for load-balancing */
+	unsigned long		runnable_weight;
 	struct rb_node		run_node;
 	struct list_head	group_node;
 	unsigned int		on_rq;
@@ -1400,16 +1401,6 @@ struct task_struct {
 	int lockdep_depth;
 	unsigned int lockdep_recursion;
 	struct held_lock held_locks[MAX_LOCK_DEPTH];
-#endif
-#ifdef CONFIG_LOCKDEP_CROSSRELEASE
-#define MAX_XHLOCKS_NR 64UL
-	struct hist_lock *xhlocks; /* Crossrelease history locks */
-	unsigned int xhlock_idx;
-	/* For restoring at history boundaries */
-	unsigned int xhlock_idx_hist[XHLOCK_CTX_NR];
-	unsigned int hist_id;
-	/* For overwrite check at each context exit */
-	unsigned int hist_id_save[XHLOCK_CTX_NR];
 #endif
 #ifdef CONFIG_UBSAN
 	unsigned int in_ubsan;
