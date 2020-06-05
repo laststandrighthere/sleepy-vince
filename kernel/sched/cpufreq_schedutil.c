@@ -689,6 +689,7 @@ static int sugov_init(struct cpufreq_policy *policy)
 		goto stop_kthread;
 	}
 
+#ifdef CONFIG_SCHED_WALT
 	/*
 	 * NOTE:
 	 * intializing up_rate/down_rate to 0 explicitly in kernel
@@ -696,6 +697,10 @@ static int sugov_init(struct cpufreq_policy *policy)
 	 */
 	tunables->up_rate_limit_us = 0;
 	tunables->down_rate_limit_us = 0;
+#else
+	tunables->up_rate_limit_us = LATENCY_MULTIPLIER;
+	tunables->down_rate_limit_us = LATENCY_MULTIPLIER;
+#endif
 
 	policy->governor_data = sg_policy;
 	sg_policy->tunables = tunables;
