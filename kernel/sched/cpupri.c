@@ -27,7 +27,11 @@
  *  of the License.
  */
 
+#ifdef CONFIG_SCHED_MUQSS
+#include "MuQSS.h"
+#else
 #include "sched.h"
+#endif
 
 #include <linux/gfp.h>
 #include <linux/sched.h>
