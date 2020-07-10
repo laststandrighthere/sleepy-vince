@@ -21,17 +21,13 @@
 
 /* On-demand governor macros */
 #ifdef CONFIG_SCHED_MUQSS
-/* MuQSS is less likely to keep a single threaded task on the same core, so
-   have on-demand run at max speed from a much lower core utilization */
-#define DEF_FREQUENCY_UP_THRESHOLD		(40)
-#define MICRO_FREQUENCY_UP_THRESHOLD		(45)
 #define DEF_SAMPLING_DOWN_FACTOR		(5)
 #else
-#define DEF_FREQUENCY_UP_THRESHOLD		(80)
-#define MICRO_FREQUENCY_UP_THRESHOLD		(95)
 #define DEF_SAMPLING_DOWN_FACTOR		(1)
 #endif /* CONFIG_SCHED_MUQSS */
 
+#define DEF_FREQUENCY_UP_THRESHOLD		(80)
+#define MICRO_FREQUENCY_UP_THRESHOLD		(95)
 #define MAX_SAMPLING_DOWN_FACTOR		(100000)
 #define MICRO_FREQUENCY_MIN_SAMPLE_RATE		(10000)
 #define MIN_FREQUENCY_UP_THRESHOLD		(11)
