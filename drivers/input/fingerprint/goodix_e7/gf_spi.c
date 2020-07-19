@@ -322,7 +322,7 @@ gf_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 static irqreturn_t gf_irq(int irq, void *handle)
 {
     char temp = GF_NET_EVENT_IRQ;
-    __pm_wakeup_event(&fp_wakelock, msecs_to_jiffies(1000));
+    __pm_wakeup_event(&fp_wakelock, 1000);
     sendnlmsg(&temp);
 
     return IRQ_HANDLED;
