@@ -58,6 +58,18 @@
 };
 
 &soc {
+	hbtp {
+		compatible = "qcom,hbtp-input";
+		vcc_ana-supply = <&pm8953_l10>;
+		vcc_dig-supply = <&pm8953_l5>;
+		qcom,afe-load = <50000>;
+		qcom,afe-vtg-min = <2850000>;
+		qcom,afe-vtg-max = <2850000>;
+		qcom,dig-load = <15000>;
+		qcom,dig-vtg-min = <1800000>;
+		qcom,dig-vtg-max = <1800000>;
+	};
+
 	spi_6: spi@7af6000 { /* BLSP2 QUP2 */
 		compatible = "qcom,spi-qup-v2";
 		#address-cells = <1>;
@@ -141,15 +153,15 @@
 
 	qusb_phy: qusb@79000 {
 		qcom,qusb-phy-init-seq = <0xF8 0x80
-				0x53 0x84
-				0x93 0x88
-				0xCf 0x8C
-				0x14 0x9C
-				0x30 0x08
-				0x79 0x0C
-				0x21 0x10
-				0x00 0x90
-				0x9F 0x1C
-				0x00 0x18>;
+					  0x53 0x84
+					  0x93 0x88
+					  0xCf 0x8C
+					  0x14 0x9C
+					  0x30 0x08
+					  0x79 0x0C
+					  0x21 0x10
+					  0x00 0x90
+					  0x9F 0x1C
+					  0x00 0x18>;
 	};
 };

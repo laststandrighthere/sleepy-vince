@@ -35,7 +35,6 @@
 	status = "disabled";
 };
 
-/*add begin for E7 display*/
 &dsi_td4310_fhdplus_e7_vid {
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
@@ -43,7 +42,6 @@
 &dsi_td4310_fhdplus_e7_g55_vid {
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
-
 
 &dsi_td4310_ebbg_fhdplus_e7_vid {
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
@@ -56,7 +54,6 @@
 &dsi_nt36672_csot_fhdplus_e7_vid {
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
-/*add end for E7 display*/
 
 &int_codec {
 	status = "ok";
@@ -95,11 +92,11 @@
 };
 
 &wsa881x_i2c_45 {
-		status = "disabled";
+	status = "disabled";
 };
 
 &wsa881x_analog_vi_gpio {
-status = "disabled";
+	status = "disabled";
 };
 
 &wsa881x_analog_clk_gpio {
