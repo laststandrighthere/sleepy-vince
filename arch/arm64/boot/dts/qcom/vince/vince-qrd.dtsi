@@ -12,7 +12,6 @@
  */
 
 &soc {
-
 	goodix_fp {
 		compatible = "goodix,fingerprint";
 		spi-max-frequency = <1000000>;
@@ -93,12 +92,7 @@
 			synaptics,reset-delay-ms = <200>;
 			synaptics,reset-on-state = <0>;
 			synaptics,reset-active-ms = <20>;
-			/* uncomment and update line below as appropriate if there are 0D buttons */
-			/* synaptics,cap-button-codes = <102 158>; */
 			synaptics,cap-button-codes = <139 172 158>;
-			/* uncomment and update lines below as appropriate if there are virtual buttons */
-			/* synaptics,vir-button-codes = <102 100 900 100 60 158 300 900 100 60>; */
-			/* synaptics,max-y-for-2d = <800>; */
 		};
 		/* Novatek device tree node */
 		novatek@62 {
@@ -130,7 +124,7 @@
 				Y_Channel = <32>;
 				AIN_X = <17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0>;
 				AIN_Y = <31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15
-								14 13 12 11 10 9 8 7 6 5 4 3 2 1 0>;
+					 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0>;
 				AIN_KEY = <0 1 2 0xFF>;
 
 				/* MP Criteria */
@@ -329,12 +323,7 @@
 			synaptics,reset-delay-ms = <200>;
 			synaptics,reset-on-state = <0>;
 			synaptics,reset-active-ms = <20>;
-			/* uncomment and update line below as appropriate if there are 0D buttons */
-			/* synaptics,cap-button-codes = <102 158>; */
 			synaptics,cap-button-codes = <139 172 158>;
-			/* uncomment and update lines below as appropriate if there are virtual buttons */
-			/* synaptics,vir-button-codes = <102 100 900 100 60 158 300 900 100 60>; */
-			/* synaptics,max-y-for-2d = <800>; */
 		};
 	};
 

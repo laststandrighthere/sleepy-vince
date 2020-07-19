@@ -139,7 +139,6 @@
 				pins = "gpio16", "gpio17", "gpio18", "gpio19";
 				function = "blsp_spi5";
 			};
-
 			config {
 				pins = "gpio16", "gpio17", "gpio18", "gpio19";
 				drive-strength = <2>;
@@ -236,7 +235,6 @@
 					pins = "gpio64";
 					function = "gpio";
 				};
-
 				config {
 					pins = "gpio64";
 					drive-strength = <2>;

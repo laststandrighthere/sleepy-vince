@@ -24,13 +24,11 @@
 	};
 };
 
-/*add begin for E7 display*/
 #include "panel/dsi-panel-td4310-fhdplus-video_e7.dtsi"
 #include "panel/dsi-panel-td4310-fhdplus-video_e7_g55.dtsi"
 #include "panel/dsi-panel-td4310-ebbg-fhdplus-video_e7.dtsi"
 #include "panel/dsi-panel-nt36672-tianma-fhdplus-video_e7.dtsi"
 #include "panel/dsi-panel-nt36672-csot-fhdplus-video_e7.dtsi"
-/*add end for E7 display*/
 
 &soc {
 	dsi_panel_pwr_supply: dsi_panel_pwr_supply {
@@ -43,7 +41,6 @@
 	};
 };
 
-/*add begin for E7 display*/
 &dsi_td4310_fhdplus_e7_vid {
 	qcom,mdss-dsi-panel-timings-phy-v2 = [25 1f 09 0a 06 03 04 a0
 		25 1f 09 0a 06 03 04 a0
@@ -83,5 +80,3 @@
 		25 1f 09 0a 06 03 04 a0
 		25 1e 08 0a 06 03 04 a0];
 };
-/*add end for E7 display*/
-
