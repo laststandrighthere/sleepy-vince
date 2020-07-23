@@ -2323,6 +2323,8 @@ void walt_sched_energy_populated_callback(void)
 			}
 		}
 
+		sysctl_sched_smp_overlap_capacity = sched_smp_overlap_capacity;
+
 		min_power_cpu = cpu;
 	}
 

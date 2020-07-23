@@ -7049,6 +7049,7 @@ static int start_cpu(struct task_struct *p, bool boosted,
 }
 
 unsigned int sched_smp_overlap_capacity;
+unsigned int sysctl_sched_smp_overlap_capacity;
 static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 				   bool boosted, bool prefer_idle,
 				   struct find_best_target_env *fbt_env)
