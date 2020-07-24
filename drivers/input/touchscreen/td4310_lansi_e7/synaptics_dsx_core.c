@@ -135,7 +135,6 @@ bool synaptics_gesture_func_on_lansi = true;
 
 int synaptics_gesture_switch_lansi (struct input_dev *dev, unsigned int type, unsigned int code, int value)
 {
-
 	unsigned int input = 0;
 
 	if (type == EV_SYN && code == SYN_CONFIG) {
@@ -167,17 +166,10 @@ static int synaptics_rmi4_reset_device (struct synaptics_rmi4_data *rmi4_data,
 #ifdef SYNAPTICS_ESD_CHECK
 #define SYNAPTICS_ESD_CHECK_CIRCLE 2*HZ
 void synaptics_rmi4_esd_work (struct work_struct *work);
-#if 1
 #define SYNAPTICS_ESD_CHECK_RETRY_TIME 5
 int touch_event_flag;
 int fw_update_flag;
-
-
-
-
 #endif
-#endif
-
 
 #ifdef CONFIG_FB
 static void synaptics_pm_worker(struct work_struct *work);
@@ -4196,27 +4188,18 @@ EXPORT_SYMBOL (synaptics_rmi4_new_function_lansi);
 #ifdef SYNAPTICS_ESD_CHECK
 void synaptics_rmi4_esd_work (struct work_struct *work)
 {
-    unsigned char product_info[F01_STD_QUERY_LEN];
+	unsigned char product_info[F01_STD_QUERY_LEN];
 	int retval = 0;
 
-
-struct delayed_work *esd_work =
-		container_of (work, struct delayed_work, work);
-struct synaptics_rmi4_data *rmi4_data =
-		container_of (esd_work, struct synaptics_rmi4_data,
-		esd_work);
-
-
-/*
+	struct delayed_work *esd_work =
+			container_of (work, struct delayed_work, work);
 	struct synaptics_rmi4_data *rmi4_data =
-			container_of (work, struct synaptics_rmi4_data,
-			esd_work);
+			container_of (esd_work, struct synaptics_rmi4_data, esd_work);
 
-*/
 	const struct synaptics_dsx_board_data *bdata =
 			rmi4_data->hw_if->board_data;
 
-	printk ("[synaptics]Enter %s\n", __func__);
+	pr_debug ("[synaptics]Enter %s\n", __func__);
 
 	mutex_lock (&rmi4_data->rmi4_esd_mutex);
 
@@ -4227,19 +4210,17 @@ struct synaptics_rmi4_data *rmi4_data =
 			product_info,
 			F01_STD_QUERY_LEN);
 
-    if (retval < 0) {
-		 dev_err (rmi4_data->pdev->dev.parent,
-			"%s Failed to read product info, need to do HW RESET\n",
-			__func__);
-
+	if (retval < 0) {
+		dev_err (rmi4_data->pdev->dev.parent,
+				"%s Failed to read product info, need to do HW RESET\n",
+				__func__);
 		gpio_set_value (bdata->reset_gpio, 1);
 		mdelay (20);
 		gpio_set_value (bdata->reset_gpio, 0);
 		mdelay (20);
 		gpio_set_value (bdata->reset_gpio, 1);
 		mdelay (200);
-
-    }
+	}
 
 	retval = synaptics_rmi4_query_device (rmi4_data);
 	if (retval < 0) {
@@ -4252,15 +4233,12 @@ struct synaptics_rmi4_data *rmi4_data =
 
 	mutex_unlock (&rmi4_data->rmi4_esd_mutex);
 
-	queue_delayed_work (rmi4_data->esd_workqueue, &rmi4_data->esd_work, SYNAPTICS_ESD_CHECK_CIRCLE);
+	queue_delayed_work (rmi4_data->esd_workqueue, &rmi4_data->esd_work,
+			SYNAPTICS_ESD_CHECK_CIRCLE);
 
-    return;
-
+	return;
 }
 #endif
-
-
-
 
 static int synaptics_rmi4_probe (struct platform_device *pdev)
 {
@@ -4451,18 +4429,16 @@ static int synaptics_rmi4_probe (struct platform_device *pdev)
 #endif
 
 #if WAKEUP_GESTURE
-    input_set_capability (rmi4_data->input_dev, EV_KEY, KEY_WAKEUP);
-
-   rmi4_data->input_dev->event = synaptics_gesture_switch_lansi;
+	input_set_capability (rmi4_data->input_dev, EV_KEY, KEY_WAKEUP);
+	rmi4_data->input_dev->event = synaptics_gesture_switch_lansi;
 #endif
-
 
 #ifdef SYNAPTICS_ESD_CHECK
-			rmi4_data->esd_workqueue = create_singlethread_workqueue ("dsx_esd_workqueue");
-			INIT_DELAYED_WORK (&(rmi4_data->esd_work), synaptics_rmi4_esd_work);
-			queue_delayed_work (rmi4_data->esd_workqueue, &rmi4_data->esd_work, SYNAPTICS_ESD_CHECK_CIRCLE);
+	rmi4_data->esd_workqueue = create_singlethread_workqueue ("dsx_esd_workqueue");
+	INIT_DELAYED_WORK (&(rmi4_data->esd_work), synaptics_rmi4_esd_work);
+	queue_delayed_work (rmi4_data->esd_workqueue, &rmi4_data->esd_work,
+			SYNAPTICS_ESD_CHECK_CIRCLE);
 #endif
-
 	return retval;
 
 err_sysfs:
@@ -4488,7 +4464,6 @@ err_enable_irq:
 #ifdef USE_EARLYSUSPEND
 	unregister_early_suspend (&rmi4_data->early_suspend);
 #endif
-
 	synaptics_rmi4_empty_fn_list (rmi4_data);
 	input_unregister_device (rmi4_data->input_dev);
 	rmi4_data->input_dev = NULL;
@@ -4531,13 +4506,12 @@ static int synaptics_rmi4_remove (struct platform_device *pdev)
 	flush_workqueue (rmi4_data->reset_workqueue);
 	destroy_workqueue (rmi4_data->reset_workqueue);
 #endif
-printk ("Enter %s\n", __func__);
+	pr_debug ("Enter %s\n", __func__);
 #ifdef SYNAPTICS_ESD_CHECK
 	cancel_delayed_work_sync (&(rmi4_data->esd_work));
 	flush_workqueue (rmi4_data->esd_workqueue);
 	destroy_workqueue (rmi4_data->esd_workqueue);
 #endif
-
 	cancel_delayed_work_sync (&exp_data.work);
 	flush_workqueue (exp_data.workqueue);
 	destroy_workqueue (exp_data.workqueue);
@@ -4642,7 +4616,6 @@ static void synaptics_rmi4_early_suspend (struct early_suspend *h)
 
 	if (rmi4_data->stay_awake)
 		return;
-
 
 	if (rmi4_data->enable_wakeup_gesture) {
 		if (rmi4_data->no_sleep_setting) {
@@ -4752,15 +4725,15 @@ static int synaptics_rmi4_suspend (struct device *dev)
 
 	if (rmi4_data->stay_awake)
 		return 0;
-	printk ("[synaptics]Enter %s\n", __func__);
+
+	pr_debug ("[synaptics]Enter %s\n", __func__);
 
 #ifdef SYNAPTICS_ESD_CHECK
 	cancel_delayed_work_sync (&(rmi4_data->esd_work));
 #endif
 
-
 	if (rmi4_data->enable_wakeup_gesture) {
-		printk ("enable_wakeup_gesture is on\n");
+		pr_debug ("enable_wakeup_gesture is on\n");
 		if (rmi4_data->no_sleep_setting) {
 			synaptics_rmi4_reg_read (rmi4_data,
 					rmi4_data->f01_ctrl_base_addr,
@@ -4837,11 +4810,10 @@ static int synaptics_rmi4_resume (struct device *dev)
 	synaptics_rmi4_irq_enable (rmi4_data, true, false);
 
 #ifdef SYNAPTICS_ESD_CHECK
-		printk ("SYNAPTICS_ESD_CHECK is on\n");
-				queue_delayed_work (rmi4_data->esd_workqueue, &(rmi4_data->esd_work), SYNAPTICS_ESD_CHECK_CIRCLE);
+	printk ("SYNAPTICS_ESD_CHECK is on\n");
+	queue_delayed_work (rmi4_data->esd_workqueue, &(rmi4_data->esd_work),
+			SYNAPTICS_ESD_CHECK_CIRCLE);
 #endif
-
-
 
 exit:
 #ifdef FB_READY_RESET
@@ -4862,7 +4834,7 @@ exit:
 
 	rmi4_data->suspend = false;
 
-	printk ("TP-time TP resume finish\n");
+	pr_debug ("TP-time TP resume finish\n");
 	return 0;
 }
 

@@ -63,11 +63,9 @@
 #define sstrtoul(...) strict_strtoul(__VA_ARGS__)
 #endif
 
-
 #ifdef SYNAPTICS_ESD_CHECK
 #define SYNAPTICS_ESD_CHECK_CIRCLE 2*HZ
 #endif
-
 
 /*
 #define F51_DISCRETE_FORCE
