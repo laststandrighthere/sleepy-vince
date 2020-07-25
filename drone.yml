@@ -1,0 +1,25 @@
+kind: pipeline
+name: vimb_ci
+
+platform:
+  os: linux
+  arch: amd64
+
+clone:
+  depth: 1
+
+steps:
+  - name: vimb
+    image: kdrag0n/debian-kbuild:buster
+    environment:
+      CHANNEL_ID:
+        from_secret: CHANNEL_ID
+      BOT_TOKEN:
+        from_secret: BOT_TOKEN
+      STICKER:
+        from_secret: STICKER
+    commands:
+      - curl -s https://raw.githubusercontent.com/laststandrighthere/scripts/master/kernel.sh | bash -s sleepy gcc 9.3 vince aosp drone vince
+    when:
+      branch:
+        - main-4.14
