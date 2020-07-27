@@ -5964,7 +5964,9 @@ struct energy_env {
  */
 static unsigned long cpu_util_without(int cpu, struct task_struct *p)
 {
+#ifndef CONFIG_SCHED_WALT
 	struct cfs_rq *cfs_rq;
+#endif
 	unsigned int util;
 
 #ifdef CONFIG_SCHED_WALT
@@ -5983,6 +5985,9 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
 	if (cpu != task_cpu(p) || !READ_ONCE(p->se.avg.last_update_time))
 		return cpu_util(cpu);
 
+#ifdef CONFIG_SCHED_WALT
+	util = max_t(long, cpu_util(cpu) - task_util(p), 0);
+#else
 	cfs_rq = &cpu_rq(cpu)->cfs;
 	util = READ_ONCE(cfs_rq->avg.util_avg);
 
@@ -6042,7 +6047,7 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
 		}
 		util = max(util, estimated);
 	}
-
+#endif
 	/*
 	 * Utilization (estimated) can exceed the CPU capacity, thus let's
 	 * clamp to the maximum CPU capacity to ensure consistency with
