@@ -3711,7 +3711,7 @@ static inline void update_misfit_status(struct task_struct *p, struct rq *rq)
 		return;
 	}
 
-	if (task_fits_capacity(p, capacity_of(cpu_of(rq)),cpu_of(rq))) {
+	if (task_fits_max(p, cpu_of(rq))) {
 		rq->misfit_task_load = 0;
 		return;
 	}
