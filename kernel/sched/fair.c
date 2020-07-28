@@ -10844,8 +10844,7 @@ static int need_active_balance(struct lb_env *env)
 	    env->src_rq->misfit_task_load)
 		return 1;
 
-	return unlikely(sd->nr_balance_failed >
-			sd->cache_nice_tries + NEED_ACTIVE_BALANCE_THRESHOLD);
+	return unlikely(sd->nr_balance_failed > sd->cache_nice_tries+2);
 }
 
 static int active_load_balance_cpu_stop(void *data);
