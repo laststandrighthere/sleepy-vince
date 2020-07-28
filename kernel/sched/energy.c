@@ -169,7 +169,7 @@ static int sched_energy_probe(struct platform_device *pdev)
 	if (!sge_ready)
 		return -EPROBE_DEFER;
 
-	if (!sched_is_energy_aware() || !freq_energy_model)
+	if (!energy_aware() || !freq_energy_model)
 		return 0;
 
 	max_frequencies = kmalloc_array(nr_cpu_ids, sizeof(unsigned long),
