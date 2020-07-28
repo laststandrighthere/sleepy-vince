@@ -3698,7 +3698,7 @@ static inline unsigned long cfs_rq_load_avg(struct cfs_rq *cfs_rq)
 
 static int idle_balance(struct rq *this_rq, struct rq_flags *rf);
 
-static inline int task_fits_capacity(struct task_struct *p, long capacity,
+static inline bool task_fits_capacity(struct task_struct *p, long capacity,
 								int cpu);
 
 static inline void update_misfit_status(struct task_struct *p, struct rq *rq)
@@ -7328,7 +7328,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	return select_idle_sibling_cstate_aware(p, prev, target);
 }
 
-static inline int task_fits_capacity(struct task_struct *p,
+static inline bool task_fits_capacity(struct task_struct *p,
 					long capacity,
 					int cpu)
 {
