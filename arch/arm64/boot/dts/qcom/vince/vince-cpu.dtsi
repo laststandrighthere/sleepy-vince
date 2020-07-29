@@ -23,7 +23,6 @@
 		<  883200000 9>;
 };
 
-#if 0
 &msm_cpufreq {
 	qcom,cpufreq-table =
 		< 1036800 >,
@@ -32,7 +31,6 @@
 		< 2016000 >,
 		< 2208000 >;
 };
-#endif
 
 &cpubw {
 	qcom,bw-tbl =
@@ -81,7 +79,6 @@
 		< 2208000 6445 >;
 };
 
-#if 0
 &energy_costs {
 	CPU_COST_0: core-cost0 {
 		busy-cost-data = <
@@ -113,4 +110,3 @@
 		>;
 	};
 };
-#endif
