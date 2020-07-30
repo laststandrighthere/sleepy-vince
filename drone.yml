@@ -22,4 +22,4 @@ steps:
       - curl -s https://raw.githubusercontent.com/laststandrighthere/scripts/master/kernel.sh | bash -s sleepy gcc 9.3 vince aosp drone vince
     when:
       branch:
-        - main-b
+        - main-b-walt
