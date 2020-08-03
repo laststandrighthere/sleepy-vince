@@ -11,8 +11,6 @@
 #include "sched.h"
 #include "tune.h"
 
-unsigned int sysctl_sched_cfs_boost __read_mostly;
-
 #ifdef CONFIG_CGROUP_SCHEDTUNE
 bool schedtune_initialized = false;
 #endif
