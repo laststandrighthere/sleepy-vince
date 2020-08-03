@@ -159,6 +159,7 @@ __read_mostly unsigned int sched_ravg_window = MIN_SCHED_RAVG_WINDOW;
 __read_mostly unsigned int walt_cpu_util_freq_divisor;
 
 /* Initial task load. Newly created tasks are assigned this load. */
+unsigned int __read_mostly sched_init_task_load_windows;
 unsigned int __read_mostly sysctl_sched_init_task_load_pct = 15;
 
 /*
@@ -2022,8 +2023,8 @@ int sched_set_init_task_load(struct task_struct *p, int init_load_pct)
 void init_new_task_load(struct task_struct *p)
 {
 	int i;
-	u32 init_load_windows;
-	u32 init_load_pct;
+	u32 init_load_windows = sched_init_task_load_windows;
+	u32 init_load_pct = current->init_load_pct;
 
 	p->init_load_pct = 0;
 	rcu_assign_pointer(p->grp, NULL);
@@ -2037,13 +2038,12 @@ void init_new_task_load(struct task_struct *p)
 	/* Don't have much choice. CPU frequency would be bogus */
 	BUG_ON(!p->ravg.curr_window_cpu || !p->ravg.prev_window_cpu);
 
-	if (current->init_load_pct)
-		init_load_pct = current->init_load_pct;
-	else
-		init_load_pct = sysctl_sched_init_task_load_pct;
+	if (idle_task)
+		return;
 
-	init_load_windows = div64_u64((u64)init_load_pct *
-				(u64)sched_ravg_window, 100);
+	if (init_load_pct)
+		init_load_windows = div64_u64((u64)init_load_pct *
+			  (u64)sched_ravg_window, 100);
 
 	p->ravg.demand = init_load_windows;
 	p->ravg.coloc_demand = init_load_windows;
@@ -3372,6 +3372,10 @@ static void walt_init_once(void)
 
 	walt_cpu_util_freq_divisor =
 	    (sched_ravg_window >> SCHED_CAPACITY_SHIFT) * 100;
+
+	sched_init_task_load_windows =
+		div64_u64((u64)sysctl_sched_init_task_load_pct *
+			  (u64)sched_ravg_window, 100);
 }
 
 void walt_sched_init_rq(struct rq *rq)
