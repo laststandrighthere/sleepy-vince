@@ -2037,9 +2037,6 @@ void init_new_task_load(struct task_struct *p)
 	/* Don't have much choice. CPU frequency would be bogus */
 	BUG_ON(!p->ravg.curr_window_cpu || !p->ravg.prev_window_cpu);
 
-	if (idle_task)
-		return;
-
 	if (init_load_pct) {
 		init_load_windows = div64_u64((u64)init_load_pct *
 			  (u64)sched_ravg_window, 100);
